@@ -2,34 +2,50 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>宝石商人 P2P Private</title>
+    <title>宝石商人 P2P 自定义版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="cards.js"></script>
     <script src="engine.js"></script>
     <style>
-        body { background: #121212; color: #eee; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .panel { background: #1e1e1e; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px; }
-        #game-area { display: none; width: 1000px; }
-        .row { display: flex; gap: 10px; margin-bottom: 15px; }
-        .card { width: 120px; height: 160px; background: #fff; color: #333; border-radius: 5px; padding: 10px; cursor: pointer; font-size: 12px; }
-        .noble { width: 100px; height: 100px; background: #f1c40f; color: #000; }
-        .gem-bank { display: flex; gap: 10px; margin: 20px 0; }
-        .gem-btn { padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; border: none; }
-        .white { background: #fff; } .blue { background: #3498db; } .green { background: #2ecc71; } .red { background: #e74c3c; } .black { background: #333; color: #fff; }
-        .player-box { background: #252525; padding: 15px; border-radius: 5px; min-width: 150px; border: 2px solid transparent; }
-        .active-p { border-color: #f1c40f; }
-        button { padding: 10px 20px; cursor: pointer; background: #bb86fc; border: none; border-radius: 5px; }
+        body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .panel { background: #16213e; padding: 25px; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 350px; margin-top: 50px; }
+        input { width: 80%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; background: #0f3460; color: white; text-align: center; }
+        button { padding: 12px 25px; cursor: pointer; background: #e94560; border: none; border-radius: 8px; color: white; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #ff4d6d; }
+        
+        #game-area { display: none; width: 100%; max-width: 1100px; padding: 20px; }
+        .row { display: flex; gap: 15px; margin-bottom: 20px; justify-content: center; align-items: center; }
+        .card { width: 130px; height: 180px; background: white; color: #333; border-radius: 10px; padding: 10px; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3); position: relative; }
+        .noble { width: 110px; height: 110px; background: #f1c40f; border: 3px solid #d4af37; }
+        
+        .gem-bank { display: flex; gap: 15px; margin: 30px 0; background: #0f3460; padding: 15px; border-radius: 50px; }
+        .gem-btn { width: 50px; height: 50px; border-radius: 50%; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+        
+        .white { background: #fff; color: #333; } .blue { background: #3498db; color: #fff; }
+        .green { background: #2ecc71; color: #fff; } .red { background: #e74c3c; color: #fff; }
+        .black { background: #34495e; color: #fff; }
+        
+        .player-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; width: 100%; }
+        .player-box { background: #16213e; padding: 15px; border-radius: 10px; border: 2px solid transparent; }
+        .active-p { border-color: #e94560; background: #1a1a2e; }
+        .score { font-size: 24px; color: #f1c40f; font-weight: bold; }
     </style>
 </head>
 <body>
 
     <div id="setup" class="panel">
-        <h2 id="role-hint">加载中...</h2>
-        <input type="text" id="room-id" placeholder="输入房间号">
-        <button onclick="connect()">确定进入</button>
-        <div id="wait-msg" style="display:none; margin-top:15px;">
-            已加入: <span id="p-count">1</span>/4
-            <button id="start-btn" onclick="hostStart()" style="display:none;">正式开始</button>
+        <h2 id="role-hint">宝石商人联机</h2>
+        <input type="text" id="user-nickname" placeholder="你的游戏昵称">
+        <input type="text" id="room-id" placeholder="房间号 (如: annie888)">
+        <button onclick="connect()">进入房间</button>
+        
+        <div id="wait-msg" style="display:none; margin-top:20px;">
+            <p>已加入玩家:</p>
+            <ul id="p-list" style="list-style:none; padding:0; color:#accent;"></ul>
+            <div id="host-ctrl" style="display:none;">
+                <button onclick="hostStart()">开始游戏</button>
+            </div>
+            <p id="client-wait" style="font-size:0.8em; color:#888;">等待房主开始...</p>
         </div>
     </div>
 
@@ -40,65 +56,105 @@
             <div class="row" id="tier2"></div>
             <div class="row" id="tier1"></div>
         </div>
+        
         <div class="gem-bank" id="bank-ui"></div>
-        <div id="turn-display" style="font-size: 20px; color: gold; margin-bottom: 10px;"></div>
-        <button onclick="sendAction({type:'END'})">结束回合</button>
-        <div class="row" id="players-ui" style="margin-top:20px;"></div>
+        
+        <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 20px;">
+            <div id="turn-display" style="font-size: 24px; font-weight: bold;"></div>
+            <button onclick="sendAction({type:'END'})">结束操作</button>
+            <button id="reset-btn" onclick="hostStart()" style="display:none; background:#555;">再开一把</button>
+        </div>
+
+        <div class="player-list" id="players-ui"></div>
     </div>
 
 <script>
     const isHost = new URLSearchParams(window.location.search).get('role') === 'host';
-    let peer, conn, myId, connections = [];
+    let peer, conn, myId, myNickname, connections = [];
 
-    document.getElementById('role-hint').innerText = isHost ? "👑 创建房间" : "🎮 加入游戏";
+    // 初始化时从本地加载上次的昵称
+    document.addEventListener('DOMContentLoaded', () => {
+        myNickname = localStorage.getItem('splendor_nickname') || "";
+        document.getElementById('user-nickname').value = myNickname;
+        document.getElementById('role-hint').innerText = isHost ? "👑 创建房间" : "🎮 加入游戏";
+        if(isHost) document.getElementById('reset-btn').style.display = 'inline-block';
+    });
 
     function connect() {
         const rid = document.getElementById('room-id').value;
+        myNickname = document.getElementById('user-nickname').value || "无名氏";
+        localStorage.setItem('splendor_nickname', myNickname); // 保存昵称
+        
+        if(!rid) return alert("请输入房间号");
+
         peer = isHost ? new Peer(rid) : new Peer();
+        
         peer.on('open', (id) => {
             myId = id;
-            document.getElementById('setup').style.background = "#2e7d32";
+            document.getElementById('setup').style.borderColor = "#e94560";
             document.getElementById('wait-msg').style.display = "block";
             if(isHost) {
-                document.getElementById('start-btn').style.display = "inline";
-                addPlayer(myId);
+                document.getElementById('host-ctrl').style.display = "block";
+                updatePlayerInfo(myId, myNickname);
             } else {
                 conn = peer.connect(rid);
                 listen(conn);
             }
         });
+
         peer.on('connection', (c) => {
             connections.push(c);
             listen(c);
-            addPlayer(c.peer);
-            broadcast();
         });
     }
 
     function listen(c) {
+        c.on('open', () => {
+            // 连接开启后，立即发送自己的昵称给对方
+            c.send({type: 'INTRO', name: myNickname});
+        });
+
         c.on('data', (d) => {
+            if(d.type === 'INTRO' && isHost) {
+                updatePlayerInfo(c.peer, d.name);
+                broadcast();
+            }
             if(d.type === 'S') { gameState = d.data; render(); }
             if(d.type === 'A' && isHost) handle(d.act);
         });
     }
 
-    function addPlayer(id) {
-        if(!gameState.players.find(p => p.id === id)) {
-            gameState.players.push({ id, score: 0, gems: {white:0,blue:0,green:0,red:0,black:0}, bonus: {white:0,blue:0,green:0,red:0,black:0} });
+    function updatePlayerInfo(pid, name) {
+        gameState.playerNames[pid] = name;
+        if(!gameState.players.find(p => p.id === pid)) {
+            gameState.players.push({ id: pid, score: 0, gems: {white:0,blue:0,green:0,red:0,black:0}, bonus: {white:0,blue:0,green:0,red:0,black:0} });
         }
     }
 
     function hostStart() {
+        // 重置游戏状态但保留玩家 ID 和 名字
+        const currentPlayers = gameState.players.map(p => ({
+            id: p.id, score: 0, 
+            gems: {white:0,blue:0,green:0,red:0,black:0}, 
+            bonus: {white:0,blue:0,green:0,red:0,black:0}
+        }));
+        
+        gameState.players = currentPlayers;
         const limit = getGemLimit(gameState.players.length);
         ['white','blue','green','red','black'].forEach(c => gameState.bank[c] = limit);
+        
         gameState.decks.tier1 = shuffle([...FULL_CARD_POOL.level1]);
         gameState.decks.tier2 = shuffle([...FULL_CARD_POOL.level2]);
         gameState.decks.tier3 = shuffle([...FULL_CARD_POOL.level3]);
+        
         gameState.market.tier1 = gameState.decks.tier1.splice(0, 4);
         gameState.market.tier2 = gameState.decks.tier2.splice(0, 4);
         gameState.market.tier3 = gameState.decks.tier3.splice(0, 4);
+        
         gameState.nobles = shuffle([...FULL_CARD_POOL.nobles]).splice(0, gameState.players.length + 1);
         gameState.started = true;
+        gameState.turn = 0;
+        gameState.gemsTaken = 0;
         broadcast();
     }
 
@@ -128,39 +184,74 @@
         gameState.gemsTaken = 0;
     }
 
-    function broadcast() { connections.forEach(c => c.send({type:'S', data:gameState})); render(); }
+    function broadcast() {
+        connections.forEach(c => { if(c.open) c.send({type:'S', data:gameState}); });
+        render();
+    }
+
     function sendAction(a) { a.uid = myId; if(isHost) handle(a); else conn.send({type:'A', act:a}); }
 
     function render() {
-        if(!gameState.started) { document.getElementById('p-count').innerText = gameState.players.length; return; }
+        if(!gameState.started) {
+            const listEl = document.getElementById('p-list');
+            listEl.innerHTML = "";
+            gameState.players.forEach(p => {
+                const li = document.createElement('li');
+                li.innerText = `👤 ${gameState.playerNames[p.id] || "加入中..."}`;
+                listEl.appendChild(li);
+            });
+            document.getElementById('p-count').innerText = gameState.players.length;
+            return;
+        }
         document.getElementById('setup').style.display = 'none';
         document.getElementById('game-area').style.display = 'block';
 
+        // 渲染贵族
+        let nHtml = '';
+        gameState.nobles.forEach(n => {
+            let costs = '';
+            for(let k in n.cost) costs += `<div class="${k}" style="padding:2px;font-size:10px">${n.cost[k]}</div>`;
+            nHtml += `<div class="card noble"><div style="font-weight:bold">3pt</div>${costs}</div>`;
+        });
+        document.getElementById('noble-row').innerHTML = nHtml;
+
+        // 渲染市场
         const drawRow = (id, tier) => {
-            let h = `<div style="color:gray; width:50px">${tier}</div>`;
+            let h = '';
             gameState.market[tier].forEach((c, i) => {
                 if(!c) return;
+                let costs = '';
+                for(let k in c.cost) costs += `<span class="${k}" style="padding:2px; margin:1px; border-radius:3px">${c.cost[k]}</span>`;
                 h += `<div class="card" onclick="sendAction({type:'B', t:'${tier}', i:${i}})">
-                    <b style="font-size:18px">${c.points}</b> <div class="${c.bonus}" style="height:15px"></div>
-                    <div style="margin-top:40px">${JSON.stringify(c.cost)}</div>
+                    <b style="font-size:20px">${c.points}</b> <div class="${c.bonus}" style="height:20px; border-radius:4px; margin:5px 0;"></div>
+                    <div style="position:absolute; bottom:10px;">${costs}</div>
                 </div>`;
             });
             document.getElementById(id).innerHTML = h;
         };
         drawRow('tier1', 'tier1'); drawRow('tier2', 'tier2'); drawRow('tier3', 'tier3');
 
+        // 渲染银行
         let bHtml = '';
         for(let c in gameState.bank) bHtml += `<button class="gem-btn ${c}" onclick="sendAction({type:'G', c:'${c}'})">${gameState.bank[c]}</button>`;
         document.getElementById('bank-ui').innerHTML = bHtml;
 
+        // 渲染玩家列表
         let pHtml = '';
         gameState.players.forEach((p, i) => {
-            pHtml += `<div class="player-box ${i===gameState.turn?'active-p':''}">
-                P${i+1} (${p.score}pt)<br><small>加成: ${JSON.stringify(p.bonus)}</small><br><small>宝石: ${JSON.stringify(p.gems)}</small>
+            const isTurn = i === gameState.turn;
+            const pName = gameState.playerNames[p.id] || "未知";
+            pHtml += `<div class="player-box ${isTurn?'active-p':''}">
+                <div style="font-weight:bold; color:${isTurn?'#e94560':'#888'}">${pName} ${p.id===myId?'(我)':''}</div>
+                <div class="score">${p.score} pt</div>
+                <div style="font-size:11px; margin-top:5px;">宝石: W${p.gems.white} B${p.gems.blue} G${p.gems.green} R${p.gems.red} K${p.gems.black}</div>
+                <div style="font-size:11px;">加成: W${p.bonus.white} B${p.bonus.blue} G${p.bonus.green} R${p.bonus.red} K${p.bonus.black}</div>
             </div>`;
         });
         document.getElementById('players-ui').innerHTML = pHtml;
-        document.getElementById('turn-display').innerText = gameState.players[gameState.turn].id === myId ? "YOUR TURN" : "WAITING...";
+
+        const activePlayerName = gameState.playerNames[gameState.players[gameState.turn].id];
+        document.getElementById('turn-display').innerText = gameState.players[gameState.turn].id === myId ? "➔ 到你的回合了" : `等待 ${activePlayerName}...`;
     }
 </script>
 </body>

@@ -1,11 +1,12 @@
-// engine.js - 动态状态管理
+// engine.js - 逻辑核心
 let gameState = {
     started: false,
     nobles: [],
     market: { tier1: [], tier2: [], tier3: [] },
     decks: { tier1: [], tier2: [], tier3: [] },
     bank: { white: 0, blue: 0, green: 0, red: 0, black: 0, gold: 5 },
-    players: [],
+    players: [], // 存储玩家实时数据
+    playerNames: {}, // 格式 { peerId: customName }
     turn: 0,
     gemsTaken: 0
 };
@@ -13,9 +14,7 @@ let gameState = {
 function getGemLimit(playerCount) {
     if (playerCount === 2) return 4;
     if (playerCount === 3) return 5;
-    if (playerCount === 4) return 7;
-    if (playerCount === 5) return 8;
-    return 0;
+    return 7; // 4人
 }
 
 function checkNobles(player) {
