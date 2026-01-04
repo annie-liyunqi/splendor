@@ -342,6 +342,13 @@
                         <div v-if="c.points" class="points">{{c.points}}</div>
                     </div>
                 </div>
+                <div style="font-size: 0.9em; margin-top: 5px; display: flex; align-items: center; flex-wrap: wrap;" v-if="gameState.playerNobles[p.id] && gameState.playerNobles[p.id].length > 0">
+                    <span style="margin-right: 5px;">贵族:</span>
+                    <div v-for="(noble, nIdx) in gameState.playerNobles[p.id]" :key="nIdx" 
+                         class="mini-card" style="background: #e67e22; border-color: #d35400; cursor: default;">
+                        <div class="points">3</div>
+                    </div>
+                </div>
                 <div style="margin-top: 5px;">分数: <strong>{{ gameState.scores[p.id] || 0 }}</strong></div>
             </div>
         </div>
@@ -394,6 +401,7 @@
         <div style="display: flex; gap: 10px; margin-top: 10px;">
             <button @click="confirmDiscard" :disabled="tokensToDiscard.length !== discardCountNeeded">确认弃牌</button>
             <button @click="resetDiscard" class="secondary">重选</button>
+            <button @click="cancelDiscard" class="secondary" style="background: #e74c3c;">取消操作</button>
         </div>
     </div>
 
@@ -446,6 +454,7 @@ createApp({
         const tokensToDiscard = ref([]);
         const tempTokensMap = reactive({});
         const discardCountNeeded = ref(0);
+        const pendingReserve = ref(null); // { level, index }
 
         // 新增状态
         const showTurnNotification = ref(false);
@@ -464,6 +473,7 @@ createApp({
             playerTokens: {}, // { peerId: { red: 0... } }
             playerBonuses: {}, // { peerId: { red: 0... } }
             reservedCards: {}, // { peerId: [] }
+            playerNobles: {}, // { peerId: [] }
             scores: {},
             board: { level1: [], level2: [], level3: [] },
             decks: { level1: [], level2: [], level3: [] },
@@ -497,7 +507,19 @@ createApp({
         // --- P2P 初始化 ---
         onMounted(() => {
             // 生成随机 ID (实际使用可以使用短 ID 生成逻辑)
-            peer = new Peer(null, { debug: 2 });
+            peer = new Peer(null, { 
+                debug: 2,
+                config: {
+                    iceServers: [
+                        // Tencent (Very reliable in China)
+                        { urls: 'stun:stun.qq.com:3478' },
+                        // Xiaomi
+                        { urls: 'stun:stun.miwifi.com:3478' },
+                        // 3CX (International, sometimes works but slower)
+                        { urls: 'stun:stun.3cx.com:3478' }
+                    ]
+                }
+            });
 
             peer.on('open', (id) => {
                 myPeerId.value = id;
@@ -604,6 +626,7 @@ createApp({
                 gameState.playerTokens[p.id] = { red:0, green:0, blue:0, white:0, black:0, gold:0 };
                 gameState.playerBonuses[p.id] = { red:0, green:0, blue:0, white:0, black:0 };
                 gameState.reservedCards[p.id] = [];
+                gameState.playerNobles[p.id] = [];
                 gameState.scores[p.id] = 0;
             });
             
@@ -654,6 +677,7 @@ createApp({
                         if(!gameState.playerTokens[p.id]) gameState.playerTokens[p.id] = { red:0, green:0, blue:0, white:0, black:0, gold:0 };
                         if(!gameState.playerBonuses[p.id]) gameState.playerBonuses[p.id] = { red:0, green:0, blue:0, white:0, black:0 };
                         if(!gameState.reservedCards[p.id]) gameState.reservedCards[p.id] = [];
+                        if(!gameState.playerNobles[p.id]) gameState.playerNobles[p.id] = [];
                     });
                     break;
 
@@ -805,6 +829,7 @@ createApp({
                 gameState.playerTokens[p.id] = { red:0, green:0, blue:0, white:0, black:0, gold:0 };
                 gameState.playerBonuses[p.id] = { red:0, green:0, blue:0, white:0, black:0 };
                 gameState.reservedCards[p.id] = [];
+                gameState.playerNobles[p.id] = [];
             });
 
             gameStarted.value = true;
@@ -922,7 +947,7 @@ createApp({
             nextTurn();
         };
 
-        const processReserveCardAction = (playerId, { level, index }) => {
+        const processReserveCardAction = (playerId, { level, index, discard }) => {
             const currentPlayer = players.value[gameState.turnIndex];
             if (currentPlayer.id !== playerId) return;
 
@@ -962,6 +987,15 @@ createApp({
                 broadcastLog(`${currentPlayer.name} 预约了卡牌 (银行无金币)`);
             }
 
+            // 处理弃牌
+            if (discard && discard.length > 0) {
+                 discard.forEach(color => {
+                     gameState.playerTokens[playerId][color]--;
+                     gameState.bank[color]++;
+                 });
+                 broadcastLog(`${currentPlayer.name} 归还了: ${discard.join(', ')}`);
+            }
+
             nextTurn();
         };
 
@@ -978,6 +1012,8 @@ createApp({
                 }
                 if (satisfy) {
                     gameState.scores[playerId] += 3;
+                    if (!gameState.playerNobles[playerId]) gameState.playerNobles[playerId] = [];
+                    gameState.playerNobles[playerId].push(noble);
                     broadcastLog(`👑 贵族拜访了 ${players.value.find(p => p.id === playerId).name}`);
                     gameState.nobles.splice(i, 1);
                     break; 
@@ -1084,15 +1120,41 @@ createApp({
             selectedCard.value = null;
         };
 
+        const submitReserve = (level, index, discard) => {
+             if (isHost.value) {
+                processReserveCardAction(myPeerId.value, { level, index, discard });
+            } else {
+                connections[0].send({ type: 'ACTION_RESERVE_CARD', payload: { level, index, discard } });
+            }
+        };
+
         const executeReserve = () => {
             if (!selectedCard.value) return;
             const { level, index } = selectedCard.value;
             
-            if (isHost.value) {
-                processReserveCardAction(myPeerId.value, { level, index });
-            } else {
-                connections[0].send({ type: 'ACTION_RESERVE_CARD', payload: { level, index } });
+            // 检查筹码上限
+            const currentTotal = Object.values(gameState.playerTokens[myPeerId.value]).reduce((a, b) => a + b, 0);
+            const willGetGold = gameState.bank.gold > 0;
+            const newTotal = currentTotal + (willGetGold ? 1 : 0);
+
+            if (newTotal > 10) {
+                 isDiscarding.value = true;
+                 discardCountNeeded.value = newTotal - 10;
+                 tokensToDiscard.value = [];
+                 pendingReserve.value = { level, index };
+
+                 const current = { ...gameState.playerTokens[myPeerId.value] };
+                 if (willGetGold) {
+                     current.gold = (current.gold || 0) + 1;
+                 }
+                 for (const key in tempTokensMap) delete tempTokensMap[key];
+                 Object.assign(tempTokensMap, current);
+                 
+                 selectedCard.value = null; 
+                 return;
             }
+
+            submitReserve(level, index, []);
             selectedCard.value = null;
         };
 
@@ -1163,13 +1225,37 @@ createApp({
             tokensToDiscard.value = [];
             // 重置临时状态
             const current = { ...gameState.playerTokens[myPeerId.value] };
-            selectedTokens.value.forEach(c => current[c] = (current[c] || 0) + 1);
+            
+            if (pendingReserve.value) {
+                 if (gameState.bank.gold > 0) {
+                     current.gold = (current.gold || 0) + 1;
+                 }
+            } else {
+                selectedTokens.value.forEach(c => current[c] = (current[c] || 0) + 1);
+            }
+            
+            for (const key in tempTokensMap) delete tempTokensMap[key];
             Object.assign(tempTokensMap, current);
+        };
+
+        const cancelDiscard = () => {
+            isDiscarding.value = false;
+            tokensToDiscard.value = [];
+            pendingReserve.value = null;
+            selectedTokens.value = [];
         };
 
         const confirmDiscard = () => {
             if (tokensToDiscard.value.length !== discardCountNeeded.value) return;
-            submitTakeTokens(selectedTokens.value, tokensToDiscard.value);
+            
+            if (pendingReserve.value) {
+                submitReserve(pendingReserve.value.level, pendingReserve.value.index, tokensToDiscard.value);
+                pendingReserve.value = null;
+                isDiscarding.value = false;
+                tokensToDiscard.value = [];
+            } else {
+                submitTakeTokens(selectedTokens.value, tokensToDiscard.value);
+            }
         };
 
         // 旧的 buyCard 函数已废弃，逻辑拆分到 selectCard, executeBuy, executeReserve 中
@@ -1177,11 +1263,27 @@ createApp({
         const reserveFromDeck = (level) => {
             if (!isMyTurn.value || gameState.gameOver || actionMode.value !== 'reserve') return;
             
-            if (isHost.value) {
-                processReserveCardAction(myPeerId.value, { level, index: -1 });
-            } else {
-                connections[0].send({ type: 'ACTION_RESERVE_CARD', payload: { level, index: -1 } });
+            // 检查筹码上限
+            const currentTotal = Object.values(gameState.playerTokens[myPeerId.value]).reduce((a, b) => a + b, 0);
+            const willGetGold = gameState.bank.gold > 0;
+            const newTotal = currentTotal + (willGetGold ? 1 : 0);
+
+            if (newTotal > 10) {
+                 isDiscarding.value = true;
+                 discardCountNeeded.value = newTotal - 10;
+                 tokensToDiscard.value = [];
+                 pendingReserve.value = { level, index: -1 };
+
+                 const current = { ...gameState.playerTokens[myPeerId.value] };
+                 if (willGetGold) {
+                     current.gold = (current.gold || 0) + 1;
+                 }
+                 for (const key in tempTokensMap) delete tempTokensMap[key];
+                 Object.assign(tempTokensMap, current);
+                 return;
             }
+            
+            submitReserve(level, -1, []);
         };
 
         const currentPlayerName = computed(() => {
@@ -1204,7 +1306,7 @@ createApp({
             setRole, reserveFromDeck,
             myPlayerName, isReady, updateName, setReady, restartGame, rankedPlayers,
             selectedCard, remoteSelections, selectCard, executeBuy, executeReserve,
-            isDiscarding, discardCountNeeded, tempTokensMap, tokensToDiscard, handleDiscardClick, resetDiscard, confirmDiscard,
+            isDiscarding, discardCountNeeded, tempTokensMap, tokensToDiscard, handleDiscardClick, resetDiscard, confirmDiscard, cancelDiscard,
             showTurnNotification, voteActive, requestRestart, submitVote
         };
     }
