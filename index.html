@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>宝石商人 P2P 联机版</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #2c3e50; color: white; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+        .setup-panel { background: #34495e; padding: 20px; border-radius: 10px; margin-bottom: 20px; text-align: center; }
+        #game-area { display: none; width: 100%; max-width: 1000px; }
+        
+        /* 布局样式 */
+        .main-layout { display: flex; gap: 20px; justify-content: space-around; }
+        .market { display: grid; grid-template-columns: repeat(4, 120px); gap: 10px; }
+        .card { width: 120px; height: 160px; background: white; color: #333; border-radius: 5px; padding: 10px; cursor: pointer; position: relative; font-size: 12px; }
+        .card.disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        /* 角色指示 */
+        .turn-indicator { font-size: 20px; margin: 10px; padding: 10px; border-radius: 5px; background: #f1c40f; color: #2c3e50; font-weight: bold; }
+        .gem-btn { padding: 5px 10px; margin: 5px; cursor: pointer; border: none; border-radius: 3px; font-weight: bold; }
+        
+        /* 颜色配置 */
+        .white { background: #fff; color: #000; } .blue { background: #3498db; color: #fff; }
+        .green { background: #2ecc71; color: #fff; } .red { background: #e74c3c; color: #fff; }
+        .black { background: #000; color: #fff; }
+    </style>
+</head>
+<body>
+
+    <h1>Splendor P2P 联机版</h1>
+
+    <div class="setup-panel" id="setup">
+        <div id="my-id-display">正在初始化我的 ID...</div>
+        <hr>
+        <input type="text" id="join-id" placeholder="输入房主的 ID">
+        <button onclick="joinGame()">加入朋友的游戏</button>
+        <p style="font-size: 0.8em; color: #bdc3c7;">最多支持 4 人，房主负责发牌和管理状态</p>
+    </div>
+
+    <div id="game-area">
+        <div class="turn-indicator" id="turn-msg">等待玩家加入...</div>
+        
+        <div class="main-layout">
+            <div id="bank">
+                <h3>公共资源</h3>
+                <div id="bank-list"></div>
+                <button onclick="endTurn()" style="margin-top:20px; background:#e67e22; color:white; border:none; padding:10px;">结束我的回合</button>
+            </div>
+
+            <div class="market" id="market"></div>
+        </div>
+
+        <hr>
+        <div id="players-status" style="display: flex; gap: 10px; flex-wrap: wrap;"></div>
+    </div>
+
+<script>
+    // --- 游戏逻辑变量 ---
+    let peer, conn;
+    let myId = "";
+    let isHost = false;
+    let connections = []; // 仅房主使用
+    let gameState = {
+        market: [],
+        bank: { white: 7, blue: 7, green: 7, red: 7, black: 7 },
+        players: [], // { id, name, gems: {}, bonuses: {}, score: 0 }
+        currentTurnIndex: 0,
+        gemsTakenThisTurn: 0
+    };
+
+    // --- 初始化 Peer ---
+    // 为了方便朋友加入，建议你手动设置一个固定的房主ID，或者直接让系统生成
+    peer = new Peer(); 
+
+    peer.on('open', (id) => {
+        myId = id;
+        document.getElementById('my-id-display').innerHTML = `我的 ID: <b style="color:#f1c40f">${id}</b> <br> (发送给朋友)`;
+    });
+
+    // 房主监听连接
+    peer.on('connection', (c) => {
+        isHost = true;
+        connections.push(c);
+        setupConnection(c);
+        if(gameState.players.length === 0) {
+            // 第一个进入的是房主本人
+            addPlayer(myId);
+        }
+        addPlayer(c.peer);
+        broadcastState();
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('game-area').style.display = 'block';
+    });
+
+    function joinGame() {
+        const targetId = document.getElementById('join-id').value;
+        conn = peer.connect(targetId);
+        setupConnection(conn);
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('game-area').style.display = 'block';
+    }
+
+    function setupConnection(c) {
+        c.on('data', (data) => {
+            if (data.type === 'STATE_UPDATE') {
+                gameState = data.state;
+                render();
+            }
+            if (data.type === 'ACTION' && isHost) {
+                handleAction(data.action);
+            }
+        });
+    }
+
+    // --- 核心逻辑 ---
+    function addPlayer(pid) {
+        if (!gameState.players.find(p => p.id === pid)) {
+            gameState.players.push({
+                id: pid,
+                gems: { white: 0, blue: 0, green: 0, red: 0, black: 0 },
+                bonuses: { white: 0, blue: 0, green: 0, red: 0, black: 0 },
+                score: 0
+            });
+            if (gameState.market.length === 0) initMarket();
+        }
+    }
+
+    function initMarket() {
+        const colors = ['white', 'blue', 'green', 'red', 'black'];
+        for (let i = 0; i < 8; i++) {
+            gameState.market.push({
+                points: Math.floor(Math.random() * 3),
+                bonus: colors[Math.floor(Math.random() * 5)],
+                cost: { [colors[Math.floor(Math.random() * 5)]]: Math.floor(Math.random() * 3) + 1 }
+            });
+        }
+    }
+
+    function handleAction(act) {
+        let p = gameState.players[gameState.currentTurnIndex];
+        if (act.player !== p.id) return;
+
+        if (act.type === 'TAKE_GEM') {
+            if (gameState.gemsTakenThisTurn < 3 && gameState.bank[act.color] > 0) {
+                gameState.bank[act.color]--;
+                p.gems[act.color]++;
+                gameState.gemsTakenThisTurn++;
+            }
+        } else if (act.type === 'BUY') {
+            const card = gameState.market[act.index];
+            // 简化购买逻辑
+            let costColor = Object.keys(card.cost)[0];
+            let actualNeed = Math.max(0, card.cost[costColor] - (p.bonuses[costColor] || 0));
+            if (p.gems[costColor] >= actualNeed) {
+                p.gems[costColor] -= actualNeed;
+                gameState.bank[costColor] += actualNeed;
+                p.bonuses[card.bonus]++;
+                p.score += card.points;
+                gameState.market[act.index] = {
+                    points: Math.floor(Math.random() * 3),
+                    bonus: ['white', 'blue', 'green', 'red', 'black'][Math.floor(Math.random() * 5)],
+                    cost: { [['white', 'blue', 'green', 'red', 'black'][Math.floor(Math.random() * 5)]]: Math.floor(Math.random() * 3) + 1 }
+                };
+                endTurn();
+            }
+        }
+        broadcastState();
+    }
+
+    function sendAction(act) {
+        if (isHost) {
+            handleAction(act);
+        } else {
+            conn.send({ type: 'ACTION', action: act });
+        }
+    }
+
+    function endTurn() {
+        if(isHost) {
+            gameState.currentTurnIndex = (gameState.currentTurnIndex + 1) % gameState.players.length;
+            gameState.gemsTakenThisTurn = 0;
+            broadcastState();
+        } else {
+            // 客户端请求结束回合不需要特殊数据，只需通知房主，房主逻辑里控制
+        }
+    }
+
+    function broadcastState() {
+        if (isHost) {
+            connections.forEach(c => c.send({ type: 'STATE_UPDATE', state: gameState }));
+            render();
+        }
+    }
+
+    // --- 渲染界面 ---
+    function render() {
+        const isMyTurn = gameState.players[gameState.currentTurnIndex]?.id === myId;
+        document.getElementById('turn-msg').innerText = isMyTurn ? "🔴 轮到你了！" : `等待 ${gameState.currentTurnIndex + 1} 号玩家...`;
+
+        // 渲染银行
+        let bankHtml = '';
+        for (let c in gameState.bank) {
+            bankHtml += `<div class="gem-btn ${c}" onclick="sendAction({type:'TAKE_GEM', color:'${c}', player:'${myId}'})">${c}: ${gameState.bank[c]}</div>`;
+        }
+        document.getElementById('bank-list').innerHTML = bankHtml;
+
+        // 渲染市场
+        let marketHtml = '';
+        gameState.market.forEach((card, i) => {
+            let costKey = Object.keys(card.cost)[0];
+            marketHtml += `<div class="card" onclick="sendAction({type:'BUY', index:${i}, player:'${myId}'})">
+                <b>${card.points} 分</b><br>奖励: ${card.bonus}<br>消耗: ${card.cost[costKey]} ${costKey}
+            </div>`;
+        });
+        document.getElementById('market').innerHTML = marketHtml;
+
+        // 渲染玩家列表
+        let playerHtml = '';
+        gameState.players.forEach((p, idx) => {
+            playerHtml += `<div style="border:1px solid #7f8c8d; padding:5px; font-size:11px;">
+                P${idx+1}: ${p.id.substring(0,4)} | <b>${p.score}分</b><br>
+                宝石: W${p.gems.white} B${p.gems.blue} G${p.gems.green} R${p.gems.red} K${p.gems.black}<br>
+                奖励: W${p.bonuses.white} B${p.bonuses.blue} G${p.bonuses.green} R${p.bonuses.red} K${p.bonuses.black}
+            </div>`;
+        });
+        document.getElementById('players-status').innerHTML = playerHtml;
+    }
+</script>
+</body>
+</html>
