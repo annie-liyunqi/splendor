@@ -130,9 +130,3 @@ const FULL_CARD_POOL = {
         { points: 3, cost: { blue: 4, green: 4 } }
     ]
 };
-
-
-
-function shuffle(array) {
-    return array.sort(() => Math.random() - 0.5);
-}

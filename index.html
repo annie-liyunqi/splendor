@@ -2,50 +2,72 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>宝石商人 P2P 自定义版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>宝石商人：终极竞技版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="cards.js"></script>
     <script src="engine.js"></script>
     <style>
-        body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
-        .panel { background: #16213e; padding: 25px; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 350px; margin-top: 50px; }
-        input { width: 80%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; background: #0f3460; color: white; text-align: center; }
-        button { padding: 12px 25px; cursor: pointer; background: #e94560; border: none; border-radius: 8px; color: white; font-weight: bold; transition: 0.3s; }
-        button:hover { background: #ff4d6d; }
+        :root { --primary: #e94560; --bg: #1a1a2e; --panel: #16213e; --text: #e0e0e0; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         
-        #game-area { display: none; width: 100%; max-width: 1100px; padding: 20px; }
-        .row { display: flex; gap: 15px; margin-bottom: 20px; justify-content: center; align-items: center; }
-        .card { width: 130px; height: 180px; background: white; color: #333; border-radius: 10px; padding: 10px; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3); position: relative; }
-        .noble { width: 110px; height: 110px; background: #f1c40f; border: 3px solid #d4af37; }
+        /* 大厅样式 */
+        .panel { background: var(--panel); padding: 30px; border-radius: 15px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 350px; margin-top: 50px; }
+        input { width: 85%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; background: #0f3460; color: white; text-align: center; font-size: 16px; }
+        button { padding: 12px 25px; cursor: pointer; background: var(--primary); border: none; border-radius: 8px; color: white; font-weight: bold; transition: 0.3s; }
+        button:hover { filter: brightness(1.2); transform: translateY(-2px); }
+        button:disabled { background: #555; cursor: not-allowed; transform: none; }
+
+        /* 游戏布局 */
+        #game-area { display: none; width: 100%; max-width: 1100px; padding: 20px; animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .row { display: flex; gap: 15px; margin-bottom: 20px; justify-content: center; flex-wrap: wrap; }
         
-        .gem-bank { display: flex; gap: 15px; margin: 30px 0; background: #0f3460; padding: 15px; border-radius: 50px; }
-        .gem-btn { width: 50px; height: 50px; border-radius: 50%; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+        /* 卡牌样式 */
+        .card { width: 130px; height: 180px; background: white; color: #333; border-radius: 10px; padding: 10px; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3); position: relative; transition: 0.2s; border: 3px solid transparent; }
+        .card:hover { transform: scale(1.05); border-color: var(--primary); }
+        .noble { width: 110px; height: 110px; background: #f1c40f; border: 3px solid #d4af37; cursor: default; }
+        .points { font-size: 24px; font-weight: bold; position: absolute; top: 5px; left: 10px; }
+        .bonus-icon { width: 25px; height: 25px; border-radius: 50%; position: absolute; top: 8px; right: 10px; box-shadow: inset 0 0 5px rgba(0,0,0,0.2); }
+
+        /* 筹码银行 */
+        .gem-bank { display: flex; gap: 15px; margin: 30px 0; background: #0f3460; padding: 15px 30px; border-radius: 50px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .gem-btn { width: 50px; height: 50px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.2); font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; transition: 0.2s; }
+
+        /* 颜色系统 */
+        .white { background: #ffffff; color: #333; }
+        .blue { background: #3498db; color: #fff; }
+        .green { background: #2ecc71; color: #fff; }
+        .red { background: #e74c3c; color: #fff; }
+        .black { background: #2c3e50; color: #fff; }
+        .gold { background: #f1c40f; color: #333; }
+
+        /* 玩家看板 */
+        .player-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; width: 100%; margin-top: 30px; }
+        .player-box { background: var(--panel); padding: 15px; border-radius: 10px; border: 2px solid transparent; position: relative; transition: 0.3s; }
+        .active-p { border-color: var(--primary); box-shadow: 0 0 15px rgba(233, 69, 96, 0.4); background: #1a1a2e; }
+        .score { font-size: 28px; color: #f1c40f; font-weight: bold; margin: 5px 0; }
+        .badge { font-size: 12px; padding: 2px 6px; border-radius: 4px; background: #0f3460; margin-right: 5px; }
         
-        .white { background: #fff; color: #333; } .blue { background: #3498db; color: #fff; }
-        .green { background: #2ecc71; color: #fff; } .red { background: #e74c3c; color: #fff; }
-        .black { background: #34495e; color: #fff; }
-        
-        .player-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; width: 100%; }
-        .player-box { background: #16213e; padding: 15px; border-radius: 10px; border: 2px solid transparent; }
-        .active-p { border-color: #e94560; background: #1a1a2e; }
-        .score { font-size: 24px; color: #f1c40f; font-weight: bold; }
+        #turn-display { font-size: 22px; font-weight: bold; color: var(--primary); text-shadow: 0 2px 4px rgba(0,0,0,0.3); }
     </style>
 </head>
 <body>
 
     <div id="setup" class="panel">
-        <h2 id="role-hint">宝石商人联机</h2>
-        <input type="text" id="user-nickname" placeholder="你的游戏昵称">
-        <input type="text" id="room-id" placeholder="房间号 (如: annie888)">
-        <button onclick="connect()">进入房间</button>
+        <h2 id="role-hint">宝石商人：P2P 竞技版</h2>
+        <input type="text" id="user-nickname" placeholder="输入你的昵称">
+        <input type="text" id="room-id" placeholder="输入房间号 (如: annie888)">
+        <button onclick="connect()">进入游戏大厅</button>
         
         <div id="wait-msg" style="display:none; margin-top:20px;">
-            <p>已加入玩家:</p>
-            <ul id="p-list" style="list-style:none; padding:0; color:#accent;"></ul>
-            <div id="host-ctrl" style="display:none;">
-                <button onclick="hostStart()">开始游戏</button>
+            <p style="border-bottom: 1px solid #333; padding-bottom: 10px;">当前房间玩家</p>
+            <ul id="p-list" style="list-style:none; padding:0; text-align: left; display: inline-block; min-width: 150px;"></ul>
+            <div id="host-ctrl" style="display:none; margin-top: 20px;">
+                <button onclick="hostStart()">随机顺序并开始游戏</button>
             </div>
-            <p id="client-wait" style="font-size:0.8em; color:#888;">等待房主开始...</p>
+            <p id="client-wait" style="font-size:0.9em; color:#888;">等待房主发牌...</p>
         </div>
     </div>
 
@@ -59,10 +81,10 @@
         
         <div class="gem-bank" id="bank-ui"></div>
         
-        <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 20px;">
-            <div id="turn-display" style="font-size: 24px; font-weight: bold;"></div>
-            <button onclick="sendAction({type:'END'})">结束操作</button>
-            <button id="reset-btn" onclick="hostStart()" style="display:none; background:#555;">再开一把</button>
+        <div style="display: flex; gap: 20px; align-items: center; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 10px; width: 100%; box-sizing: border-box;">
+            <div id="turn-display">正在初始化...</div>
+            <button id="end-btn" onclick="sendAction({type:'END'})" style="margin-left: auto;">结束回合</button>
+            <button id="reset-btn" onclick="hostStart()" style="display:none; background:#444;">再开一把</button>
         </div>
 
         <div class="player-list" id="players-ui"></div>
@@ -72,26 +94,23 @@
     const isHost = new URLSearchParams(window.location.search).get('role') === 'host';
     let peer, conn, myId, myNickname, connections = [];
 
-    // 初始化时从本地加载上次的昵称
     document.addEventListener('DOMContentLoaded', () => {
         myNickname = localStorage.getItem('splendor_nickname') || "";
         document.getElementById('user-nickname').value = myNickname;
-        document.getElementById('role-hint').innerText = isHost ? "👑 创建房间" : "🎮 加入游戏";
+        document.getElementById('role-hint').innerText = isHost ? "👑 房主模式" : "🎮 玩家模式";
         if(isHost) document.getElementById('reset-btn').style.display = 'inline-block';
     });
 
     function connect() {
         const rid = document.getElementById('room-id').value;
-        myNickname = document.getElementById('user-nickname').value || "无名氏";
-        localStorage.setItem('splendor_nickname', myNickname); // 保存昵称
-        
+        myNickname = document.getElementById('user-nickname').value || "玩家" + Math.floor(Math.random()*1000);
+        localStorage.setItem('splendor_nickname', myNickname);
         if(!rid) return alert("请输入房间号");
 
         peer = isHost ? new Peer(rid) : new Peer();
-        
         peer.on('open', (id) => {
             myId = id;
-            document.getElementById('setup').style.borderColor = "#e94560";
+            document.getElementById('setup').style.borderTop = "4px solid var(--primary)";
             document.getElementById('wait-msg').style.display = "block";
             if(isHost) {
                 document.getElementById('host-ctrl').style.display = "block";
@@ -101,7 +120,6 @@
                 listen(conn);
             }
         });
-
         peer.on('connection', (c) => {
             connections.push(c);
             listen(c);
@@ -109,79 +127,100 @@
     }
 
     function listen(c) {
-        c.on('open', () => {
-            // 连接开启后，立即发送自己的昵称给对方
-            c.send({type: 'INTRO', name: myNickname});
-        });
-
+        c.on('open', () => c.send({type: 'INTRO', name: myNickname}));
         c.on('data', (d) => {
-            if(d.type === 'INTRO' && isHost) {
-                updatePlayerInfo(c.peer, d.name);
-                broadcast();
+            if(d.type === 'INTRO' && isHost) { updatePlayerInfo(c.peer, d.name); broadcast(); }
+            if(d.type === 'S') { 
+                gameState = d.data; 
+                if(gameState.gameEnded && !window.endAlerted) { handleGameEndDisplay(); }
+                render(); 
             }
-            if(d.type === 'S') { gameState = d.data; render(); }
-            if(d.type === 'A' && isHost) handle(d.act);
+            if(d.type === 'A' && isHost) handleActionLogic(d.act);
         });
     }
 
     function updatePlayerInfo(pid, name) {
         gameState.playerNames[pid] = name;
         if(!gameState.players.find(p => p.id === pid)) {
-            gameState.players.push({ id: pid, score: 0, gems: {white:0,blue:0,green:0,red:0,black:0}, bonus: {white:0,blue:0,green:0,red:0,black:0} });
+            gameState.players.push({ 
+                id: pid, score: 0, 
+                gems: {white:0,blue:0,green:0,red:0,black:0,gold:0}, 
+                bonus: {white:0,blue:0,green:0,red:0,black:0} 
+            });
         }
     }
 
     function hostStart() {
-        // 重置游戏状态但保留玩家 ID 和 名字
-        const currentPlayers = gameState.players.map(p => ({
-            id: p.id, score: 0, 
-            gems: {white:0,blue:0,green:0,red:0,black:0}, 
-            bonus: {white:0,blue:0,green:0,red:0,black:0}
-        }));
-        
-        gameState.players = currentPlayers;
+        window.endAlerted = false;
+        gameState.players = shuffle(gameState.players);
+        gameState.firstPlayerId = gameState.players[0].id;
+        gameState.players.forEach(p => {
+            p.score = 0;
+            p.gems = {white:0,blue:0,green:0,red:0,black:0,gold:0};
+            p.bonus = {white:0,blue:0,green:0,red:0,black:0};
+        });
         const limit = getGemLimit(gameState.players.length);
         ['white','blue','green','red','black'].forEach(c => gameState.bank[c] = limit);
-        
+        gameState.bank.gold = 5;
         gameState.decks.tier1 = shuffle([...FULL_CARD_POOL.level1]);
         gameState.decks.tier2 = shuffle([...FULL_CARD_POOL.level2]);
         gameState.decks.tier3 = shuffle([...FULL_CARD_POOL.level3]);
-        
         gameState.market.tier1 = gameState.decks.tier1.splice(0, 4);
         gameState.market.tier2 = gameState.decks.tier2.splice(0, 4);
         gameState.market.tier3 = gameState.decks.tier3.splice(0, 4);
-        
         gameState.nobles = shuffle([...FULL_CARD_POOL.nobles]).splice(0, gameState.players.length + 1);
-        gameState.started = true;
-        gameState.turn = 0;
-        gameState.gemsTaken = 0;
+        gameState.started = true; gameState.gameEnded = false; gameState.isLastRound = false; gameState.turn = 0; gameState.gemsTaken = 0;
         broadcast();
     }
 
-    function handle(act) {
+    function handleActionLogic(act) {
+        if(gameState.gameEnded) return;
         let p = gameState.players[gameState.turn];
         if(act.uid !== p.id) return;
-        if(act.type === 'G' && gameState.gemsTaken < 3) {
-            if(gameState.bank[act.c] > 0) { gameState.bank[act.c]--; p.gems[act.c]++; gameState.gemsTaken++; }
+
+        if(act.type === 'G') {
+            if(gameState.gemsTaken >= 3) return; 
+            if(gameState.bank[act.c] > 0) { 
+                gameState.bank[act.c]--; 
+                p.gems[act.c] = (p.gems[act.c] || 0) + 1; 
+                gameState.gemsTaken++; 
+            }
         } else if(act.type === 'B') {
             const card = gameState.market[act.t][act.i];
-            if(canAfford(p, card)) {
+            if(card && canAfford(p, card)) {
                 for(let c in card.cost) {
                     const pay = Math.max(0, card.cost[c] - (p.bonus[c]||0));
-                    p.gems[c] -= pay; gameState.bank[c] += pay;
+                    p.gems[c] = (p.gems[c] || 0) - pay; 
+                    gameState.bank[c] += pay;
                 }
-                p.bonus[card.bonus]++; p.score += card.points;
+                p.bonus[card.bonus]++; 
+                p.score += card.points;
                 gameState.market[act.t][act.i] = gameState.decks[act.t].pop() || null;
-                finishTurn();
+                finishTurnLogic();
             }
-        } else if(act.type === 'END') { finishTurn(); }
+        } else if(act.type === 'END') { finishTurnLogic(); }
         broadcast();
     }
 
-    function finishTurn() {
-        checkNobles(gameState.players[gameState.turn]);
-        gameState.turn = (gameState.turn + 1) % gameState.players.length;
-        gameState.gemsTaken = 0;
+    function finishTurnLogic() {
+        const currentPlayer = gameState.players[gameState.turn];
+        checkNobles(currentPlayer);
+        if (!gameState.isLastRound && currentPlayer.score >= 15) gameState.isLastRound = true;
+        const nextIndex = (gameState.turn + 1) % gameState.players.length;
+        if (nextIndex === 0 && gameState.isLastRound) {
+            gameState.gameEnded = true;
+        } else {
+            gameState.turn = nextIndex;
+            gameState.gemsTaken = 0;
+        }
+    }
+
+    function handleGameEndDisplay() {
+        window.endAlerted = true;
+        const rankings = getFinalRankings();
+        let msg = "🏆 游戏结算完成！\n\n";
+        rankings.forEach((p, i) => msg += `第${i+1}名: ${gameState.playerNames[p.id]} (${p.score}分)\n`);
+        setTimeout(() => alert(msg), 500);
     }
 
     function broadcast() {
@@ -189,69 +228,65 @@
         render();
     }
 
-    function sendAction(a) { a.uid = myId; if(isHost) handle(a); else conn.send({type:'A', act:a}); }
+    function sendAction(a) { a.uid = myId; if(isHost) handleActionLogic(a); else conn.send({type:'A', act:a}); }
 
     function render() {
         if(!gameState.started) {
-            const listEl = document.getElementById('p-list');
-            listEl.innerHTML = "";
-            gameState.players.forEach(p => {
-                const li = document.createElement('li');
-                li.innerText = `👤 ${gameState.playerNames[p.id] || "加入中..."}`;
-                listEl.appendChild(li);
-            });
-            document.getElementById('p-count').innerText = gameState.players.length;
+            document.getElementById('p-list').innerHTML = gameState.players.map(p => `<li>👤 ${gameState.playerNames[p.id] || "准备中..."}</li>`).join("");
             return;
         }
         document.getElementById('setup').style.display = 'none';
         document.getElementById('game-area').style.display = 'block';
 
-        // 渲染贵族
-        let nHtml = '';
-        gameState.nobles.forEach(n => {
+        document.getElementById('noble-row').innerHTML = gameState.nobles.map(n => {
             let costs = '';
-            for(let k in n.cost) costs += `<div class="${k}" style="padding:2px;font-size:10px">${n.cost[k]}</div>`;
-            nHtml += `<div class="card noble"><div style="font-weight:bold">3pt</div>${costs}</div>`;
-        });
-        document.getElementById('noble-row').innerHTML = nHtml;
+            for(let k in n.cost) costs += `<div class="${k}" style="padding:2px;font-size:11px;border-radius:3px;margin:2px;width:15px;text-align:center">${n.cost[k]}</div>`;
+            return `<div class="card noble"><b>3pt</b><div style="display:flex;flex-wrap:wrap;margin-top:10px">${costs}</div></div>`;
+        }).join("");
 
-        // 渲染市场
-        const drawRow = (id, tier) => {
-            let h = '';
-            gameState.market[tier].forEach((c, i) => {
-                if(!c) return;
+        ['tier3', 'tier2', 'tier1'].forEach(t => {
+            document.getElementById(t).innerHTML = `<div style="color:#888;width:50px;font-weight:bold">${t.slice(-1)}阶</div>` + 
+            gameState.market[t].map((c, i) => {
+                if(!c) return `<div class="card" style="visibility:hidden"></div>`;
                 let costs = '';
-                for(let k in c.cost) costs += `<span class="${k}" style="padding:2px; margin:1px; border-radius:3px">${c.cost[k]}</span>`;
-                h += `<div class="card" onclick="sendAction({type:'B', t:'${tier}', i:${i}})">
-                    <b style="font-size:20px">${c.points}</b> <div class="${c.bonus}" style="height:20px; border-radius:4px; margin:5px 0;"></div>
-                    <div style="position:absolute; bottom:10px;">${costs}</div>
+                for(let k in c.cost) costs += `<span class="${k}" style="padding:2px 6px;margin:2px;border-radius:4px;font-size:11px;font-weight:bold">${c.cost[k]}</span>`;
+                return `<div class="card" onclick="sendAction({type:'B', t:'${t}', i:${i}})">
+                    <div class="points">${c.points || ''}</div>
+                    <div class="bonus-icon ${c.bonus}"></div>
+                    <div style="position:absolute; bottom:10px; display:flex; flex-wrap:wrap;">${costs}</div>
                 </div>`;
-            });
-            document.getElementById(id).innerHTML = h;
-        };
-        drawRow('tier1', 'tier1'); drawRow('tier2', 'tier2'); drawRow('tier3', 'tier3');
+            }).join("");
+        });
 
-        // 渲染银行
         let bHtml = '';
         for(let c in gameState.bank) bHtml += `<button class="gem-btn ${c}" onclick="sendAction({type:'G', c:'${c}'})">${gameState.bank[c]}</button>`;
         document.getElementById('bank-ui').innerHTML = bHtml;
 
-        // 渲染玩家列表
-        let pHtml = '';
-        gameState.players.forEach((p, i) => {
-            const isTurn = i === gameState.turn;
-            const pName = gameState.playerNames[p.id] || "未知";
-            pHtml += `<div class="player-box ${isTurn?'active-p':''}">
-                <div style="font-weight:bold; color:${isTurn?'#e94560':'#888'}">${pName} ${p.id===myId?'(我)':''}</div>
-                <div class="score">${p.score} pt</div>
-                <div style="font-size:11px; margin-top:5px;">宝石: W${p.gems.white} B${p.gems.blue} G${p.gems.green} R${p.gems.red} K${p.gems.black}</div>
-                <div style="font-size:11px;">加成: W${p.bonus.white} B${p.bonus.blue} G${p.bonus.green} R${p.bonus.red} K${p.bonus.black}</div>
+        document.getElementById('players-ui').innerHTML = gameState.players.map((p, i) => {
+            const isTurn = i === gameState.turn && !gameState.gameEnded;
+            const isFirst = p.id === gameState.firstPlayerId;
+            return `<div class="player-box ${isTurn?'active-p':''}">
+                <div style="font-size:13px; margin-bottom:5px">
+                    ${isFirst?'<span class="badge" style="background:#f1c40f;color:#000">先手</span>':''}
+                    <b>${gameState.playerNames[p.id]}</b> ${p.id===myId?'(我)':''}
+                </div>
+                <div class="score">${p.score} <span style="font-size:14px;color:#888">pt</span></div>
+                <div style="font-size:11px;opacity:0.9">
+                    宝石: W${p.gems.white||0} B${p.gems.blue||0} G${p.gems.green||0} R${p.gems.red||0} K${p.gems.black||0}<br>
+                    奖励: W${p.bonus.white||0} B${p.bonus.blue||0} G${p.bonus.green||0} R${p.bonus.red||0} K${p.bonus.black||0}
+                </div>
             </div>`;
-        });
-        document.getElementById('players-ui').innerHTML = pHtml;
+        }).join("");
 
-        const activePlayerName = gameState.playerNames[gameState.players[gameState.turn].id];
-        document.getElementById('turn-display').innerText = gameState.players[gameState.turn].id === myId ? "➔ 到你的回合了" : `等待 ${activePlayerName}...`;
+        const turnInfo = document.getElementById('turn-display');
+        if(gameState.gameEnded) {
+            turnInfo.innerText = "🏁 游戏已结束";
+            document.getElementById('end-btn').disabled = true;
+        } else {
+            const activeName = gameState.playerNames[gameState.players[gameState.turn].id];
+            turnInfo.innerText = gameState.players[gameState.turn].id === myId ? "➔ 到你的回合" : `等待 ${activeName}...`;
+            if(gameState.isLastRound) turnInfo.innerHTML += " <span style='color:yellow;font-size:14px'>(最后一轮)</span>";
+        }
     }
 </script>
 </body>

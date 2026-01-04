@@ -44,3 +44,31 @@ function canAfford(player, card) {
     }
     return true;
 }
+
+// engine.js 核心逻辑补充
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+// 检查是否有人达到15分
+function checkGameEndCondition() {
+    return gameState.players.some(p => p.score >= 15);
+}
+
+// 计算排名逻辑
+function getFinalRankings() {
+    return [...gameState.players].sort((a, b) => {
+        if (b.score !== a.score) {
+            return b.score - a.score; // 分数高者在前
+        }
+        // 如果分数相同，后手排名靠前
+        // 逻辑：在 players 数组中索引（index）较大的人是后手
+        const indexA = gameState.players.findIndex(p => p.id === a.id);
+        const indexB = gameState.players.findIndex(p => p.id === b.id);
+        return indexB - indexA; 
+    });
+}
