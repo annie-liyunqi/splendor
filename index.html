@@ -9,12 +9,14 @@
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #2c3e50; color: white; padding: 20px; }
         .container { max-width: 1200px; margin: 0 auto; position: relative; }
-        .lang-switch { position: absolute; top: 0; right: 0; }
+        .top-controls { position: absolute; top: 0; width: 100%; display: flex; justify-content: space-between; align-items: center;}
+        
         .card { background: #34495e; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
         button { background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; margin: 5px; }
         button:disabled { background: #7f8c8d; cursor: not-allowed; opacity: 0.7; }
         button.secondary { background: #e67e22; }
+        button.danger { background: #c0392b; }
         
         input { padding: 10px; border-radius: 4px; border: none; width: 200px; margin: 5px; }
         
@@ -92,17 +94,13 @@
         .mini-token.black { background: #2c3e50; color: white; border: 1px solid #7f8c8d; }
         .mini-token.gold { background: #f1c40f; color: #8e44ad; }
 
-        /* --- 新增：迷你预约卡样式 --- */
+        /* Mini Reserved Card */
         .mini-reserved {
-            width: 20px; height: 28px; /* 约 5:7 比例 */
-            border: 1px solid #95a5a6; border-radius: 3px;
-            display: inline-block; margin-right: 3px;
-            position: relative; cursor: pointer;
-            background-color: #ecf0f1;
-            transition: transform 0.1s;
+            width: 20px; height: 28px; border: 1px solid #95a5a6; border-radius: 3px;
+            display: inline-block; margin-right: 3px; position: relative; cursor: pointer;
+            background-color: #ecf0f1; transition: transform 0.1s;
         }
         .mini-reserved:hover { transform: scale(1.2); z-index: 10; border-color: white; }
-        /* 颜色变体 */
         .mini-reserved.bonus-red { background: #e74c3c; }
         .mini-reserved.bonus-green { background: #2ecc71; }
         .mini-reserved.bonus-blue { background: #3498db; }
@@ -131,6 +129,13 @@
             z-index: 100; display: flex; gap: 20px; align-items: center;
         }
 
+        .vote-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #2c3e50; border: 3px solid #e74c3c; padding: 30px;
+            border-radius: 8px; box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            z-index: 300; text-align: center;
+        }
+
         .turn-notification {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(0, 0, 0, 0.8); color: #f1c40f; padding: 30px 50px;
@@ -145,68 +150,83 @@
         }
 
         .last-action-bar {
-            background: rgba(0, 0, 0, 0.4);
-            border-left: 5px solid #f1c40f;
-            padding: 12px 20px;
-            margin: 0 0 20px 0;
-            border-radius: 4px;
-            font-size: 15px;
-            color: #ecf0f1;
-            display: flex;
-            align-items: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            animation: flashHighlight 1s ease-out;
+            background: rgba(0, 0, 0, 0.4); border-left: 5px solid #f1c40f;
+            padding: 12px 20px; margin: 0 0 20px 0; border-radius: 4px;
+            font-size: 15px; color: #ecf0f1; display: flex; align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2); animation: flashHighlight 1s ease-out;
         }
         @keyframes flashHighlight {
             0% { background: rgba(241, 196, 15, 0.4); }
             100% { background: rgba(0, 0, 0, 0.4); }
         }
         .action-icon { margin-right: 10px; font-size: 18px; }
+
+        .room-item {
+            background: #2c3e50; border: 1px solid #7f8c8d; padding: 8px; margin-bottom: 5px;
+            cursor: pointer; display: flex; justify-content: space-between;
+        }
+        .room-item:hover { background: #34495e; border-color: #f1c40f; }
     </style>
 </head>
 <body>
 
 <div id="app" class="container">
-    <div class="lang-switch">
-        <button class="secondary" @click="toggleLang" style="font-size: 12px; padding: 5px;">
-            {{ lang === 'zh' ? 'Switch to English' : '切换中文' }}
+    <div class="top-controls">
+        <div style="flex: 1;"></div>
+        <button v-if="isInRoom" class="secondary" @click="leaveRoom" style="font-size: 12px; padding: 5px 10px;">
+            🏠 {{ t('home') }}
         </button>
+        <div style="flex: 1; display: flex; justify-content: flex-end;">
+            <button class="secondary" @click="toggleLang" style="font-size: 12px; padding: 5px;">
+                {{ lang === 'zh' ? 'Switch to English' : '切换中文' }}
+            </button>
+        </div>
     </div>
 
     <h1>💎 Splendor Web</h1>
 
-    <div v-if="!gameStarted" class="card">
-        <h3>{{ t('lobby_title') }}</h3>
-        <div style="margin-bottom: 20px;">
-            <div>
-                <label>{{ t('your_name') }}: </label>
-                <input v-model="myName" :placeholder="t('enter_name')">
+    <div v-if="!gameStarted && !isInRoom" class="card" style="display: flex; gap: 20px;">
+        <div style="flex: 1;">
+            <h3>{{ t('lobby_title') }}</h3>
+            <div style="margin-bottom: 20px;">
+                <div>
+                    <label>{{ t('your_name') }}: </label>
+                    <input v-model="myName" :placeholder="t('enter_name')">
+                </div>
+                <div>
+                    <label>{{ t('room_id') }}: </label>
+                    <input v-model="roomName" :placeholder="t('enter_room')">
+                </div>
+                <button @click="joinRoom">{{ t('join_room') }}</button>
             </div>
-            <div>
-                <label>{{ t('room_id') }}: </label>
-                <input v-model="roomName" :placeholder="t('enter_room')">
-            </div>
-            <button @click="joinRoom">{{ t('join_room') }}</button>
         </div>
-        
-        <div v-if="isInRoom">
-            <p>{{ t('players_in_room') }} ({{ roomName }}):</p>
-            <ul>
-                <li v-for="p in players" :key="p.id">
-                    {{ p.name }} <span v-if="p.id === socketId">({{ t('you') }})</span>
-                    <span v-if="p.isReady" style="color: #2ecc71; font-weight: bold;">✓</span>
-                </li>
-            </ul>
 
-            <div style="margin-top: 15px;">
-                <button @click="toggleReady" :class="{ secondary: isReady }">
-                    {{ isReady ? t('cancel_ready') : t('ready') }}
-                </button>
-                <button @click="startGame" v-if="players.length >= 2" :disabled="!allReady">
-                    {{ t('start_game') }}
-                </button>
-                <div v-else style="color: #bdc3c7; font-size: 12px; margin-top: 5px;">{{ t('need_more_players') }}</div>
+        <div style="flex: 1; border-left: 1px solid #7f8c8d; padding-left: 20px;">
+            <h4>{{ t('active_rooms') }}</h4>
+            <div v-if="roomList.length === 0" style="color: #bdc3c7;">{{ t('no_rooms') }}</div>
+            <div v-for="r in roomList" :key="r.id" class="room-item" @click="roomName = r.id">
+                <span>{{ r.id }}</span>
+                <span>👤 {{ r.count }} | {{ r.status }}</span>
             </div>
+        </div>
+    </div>
+
+    <div v-else-if="isInRoom && !gameStarted" class="card">
+         <h3>{{ t('players_in_room') }} ({{ roomName }})</h3>
+         <ul>
+            <li v-for="p in players" :key="p.uid">
+                {{ p.name }} <span v-if="p.uid === myUid">({{ t('you') }})</span>
+                <span v-if="p.isReady" style="color: #2ecc71; font-weight: bold;">✓</span>
+            </li>
+        </ul>
+        <div style="margin-top: 15px;">
+            <button @click="toggleReady" :class="{ secondary: isReady }">
+                {{ isReady ? t('cancel_ready') : t('ready') }}
+            </button>
+            <button @click="startGame" v-if="players.length >= 2" :disabled="!allReady">
+                {{ t('start_game') }}
+            </button>
+            <div v-else style="color: #bdc3c7; font-size: 12px; margin-top: 5px;">{{ t('need_more_players') }}</div>
         </div>
     </div>
 
@@ -215,7 +235,7 @@
             <h3>{{ t('turn') }}: {{ currentPlayerName }}</h3>
             <div v-if="gameState.gameOver" style="color: #e74c3c; font-weight: bold;">🏁 {{ t('game_over') }}</div>
             <div v-else-if="isMyTurn" style="color: #f1c40f; font-weight: bold;">🌟 {{ t('your_turn') }}</div>
-            <button @click="requestRestart" class="secondary" style="font-size: 12px; padding: 5px 10px;">{{ t('reset_game') }}</button>
+            <button @click="requestRestartVote" class="danger" style="font-size: 12px; padding: 5px 10px;">{{ t('reset_game') }}</button>
         </div>
 
         <div v-if="showTurnNotification" class="turn-notification">👋 {{ t('your_turn') }}!</div>
@@ -223,13 +243,12 @@
         <div v-if="gameState.gameOver" class="card" style="background: #2c3e50; border: 2px solid #f1c40f; text-align: center;">
             <h2>🏆 {{ t('leaderboard') }}</h2>
             <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; margin: 20px 0;">
-                <div v-for="(p, idx) in rankedPlayers" :key="p.id" 
+                <div v-for="(p, idx) in rankedPlayers" :key="p.uid" 
                      style="background: #34495e; padding: 10px 20px; border-radius: 5px; width: 80%; display: flex; justify-content: space-between;">
                     <span>#{{ idx + 1 }} <strong>{{ p.name }}</strong></span>
-                    <span>{{ gameState.scores[p.id] }} pts</span>
+                    <span>{{ gameState.scores[p.uid] }} pts</span>
                 </div>
             </div>
-            <button @click="requestRestart">{{ t('back_to_lobby') }}</button>
         </div>
 
         <div class="main-layout">
@@ -248,13 +267,11 @@
                     <div v-for="(card, idx) in gameState.board[lvl]" :key="idx" 
                          class="splendor-card" :class="'bonus-' + card.bonus" @click="selectCard(lvl, idx, 'board')"
                          :style="{ opacity: gameState.gameOver ? 0.6 : 1 }">
-                         
-                        <template v-for="(sel, pid) in remoteSelections" :key="pid">
+                        <template v-for="(sel, uid) in remoteSelections" :key="uid">
                             <div v-if="sel && sel.source === 'board' && sel.level === lvl && sel.index === idx" class="selection-overlay">
-                                <div>{{ players.find(p => p.id === pid)?.name }}</div>
+                                <div>{{ players.find(p => p.uid === uid)?.name }}</div>
                             </div>
                         </template>
-
                         <div class="card-points" v-if="card.points > 0">{{ card.points }}</div>
                         <div class="card-bonus" :class="card.bonus"></div>
                         <div style="flex-grow: 1;"></div>
@@ -282,7 +299,6 @@
                         {{ count }}
                     </div>
                 </div>
-                
                 <div v-if="selectedTokens.length > 0" style="margin-top: 10px; width: 100%;">
                     <div style="font-size: 12px;">{{ t('selected') }}:</div>
                     <div style="display: flex; flex-wrap: wrap; gap: 5px; margin: 5px 0;">
@@ -303,37 +319,36 @@
         </div>
 
         <div class="player-list">
-            <div v-for="(p, index) in players" :key="p.id" 
+            <div v-for="(p, index) in players" :key="p.uid" 
                  class="player-card" 
                  :class="{ 'active-turn': index === gameState.turnIndex }">
                 
                 <div style="display:flex; justify-content: space-between;">
-                    <div><strong>{{ p.name }}</strong> <span v-if="p.id === socketId">({{ t('me') }})</span></div>
-                    <div>{{ t('score') }}: <strong>{{ gameState.scores[p.id] || 0 }}</strong></div>
+                    <div><strong>{{ p.name }}</strong> <span v-if="p.uid === myUid">({{ t('me') }})</span></div>
+                    <div>{{ t('score') }}: <strong>{{ gameState.scores[p.uid] || 0 }}</strong></div>
                 </div>
 
                 <div style="font-size: 0.9em; margin-top: 5px;">
                     <span style="margin-right: 5px;">💎:</span>
-                    <span v-for="(count, color) in gameState.playerTokens[p.id]" :key="color" v-show="count > 0" class="mini-token" :class="color">{{ count }}</span>
+                    <span v-for="(count, color) in gameState.playerTokens[p.uid]" :key="color" v-show="count > 0" class="mini-token" :class="color">{{ count }}</span>
                 </div>
                 
                 <div style="font-size: 0.9em; margin-top: 5px;">
                     <span style="margin-right: 5px;">🃏:</span>
-                    <span v-for="(count, color) in gameState.playerBonuses[p.id]" :key="color" v-show="count > 0" class="mini-token" :class="color" style="border-radius: 3px;">{{ count }}</span>
+                    <span v-for="(count, color) in gameState.playerBonuses[p.uid]" :key="color" v-show="count > 0" class="mini-token" :class="color" style="border-radius: 3px;">{{ count }}</span>
                 </div>
 
-                <div v-if="gameState.reservedCards[p.id] && gameState.reservedCards[p.id].length > 0" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 5px;">
+                <div v-if="gameState.reservedCards[p.uid] && gameState.reservedCards[p.uid].length > 0" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 5px;">
                     <span style="font-size: 0.8em; margin-right: 5px; color: #bdc3c7;">{{ t('reserved') }}:</span>
                     <div style="display: inline-block; vertical-align: middle;">
-                        <div v-for="(card, cIdx) in gameState.reservedCards[p.id]" :key="cIdx" 
+                        <div v-for="(card, cIdx) in gameState.reservedCards[p.uid]" :key="cIdx" 
                              class="mini-reserved" :class="'bonus-' + card.bonus"
-                             @click="selectCard(null, cIdx, 'reserved', p.id)"
+                             @click="selectCard(null, cIdx, 'reserved', p.uid)"
                              :title="t('click_to_view')">
                             <div v-if="card.points" class="points">{{ card.points }}</div>
                         </div>
                     </div>
                 </div>
-
             </div>
         </div>
     </div>
@@ -353,7 +368,7 @@
         </div>
         <div style="display: flex; flex-direction: column; gap: 10px;">
             <button @click="executeBuy" 
-                v-if="selectedCard.index !== -1 && isMyTurn && (selectedCard.source === 'board' || (selectedCard.source === 'reserved' && selectedCard.ownerId === socketId))">
+                v-if="selectedCard.index !== -1 && isMyTurn && (selectedCard.source === 'board' || (selectedCard.source === 'reserved' && selectedCard.ownerId === myUid))">
                 {{ t('buy') }}
             </button>
             <button @click="executeReserve" v-if="isMyTurn && selectedCard.source !== 'reserved'">{{ t('reserve') }}</button>
@@ -373,13 +388,22 @@
         <button @click="confirmDiscard" :disabled="tokensToDiscard.length !== discardCountNeeded">{{ t('confirm') }}</button>
     </div>
 
+    <div v-if="voteActive" class="vote-modal">
+        <h3>{{ t('vote_title', [voteRequester]) }}</h3>
+        <p>{{ t('vote_desc') }}</p>
+        <div style="display: flex; gap: 20px; justify-content: center;">
+            <button @click="submitVote(true)">{{ t('agree') }}</button>
+            <button @click="submitVote(false)" class="danger">{{ t('decline') }}</button>
+        </div>
+    </div>
+
     <div class="log-box" ref="logBox">
         <div v-for="(log, i) in logs" :key="i">> {{ tLog(log) }}</div>
     </div>
 </div>
 
 <script>
-const { createApp, ref, reactive, computed, nextTick, watch } = Vue;
+const { createApp, ref, reactive, computed, nextTick, watch, onMounted } = Vue;
 
 const TRANS = {
     zh: {
@@ -390,15 +414,14 @@ const TRANS = {
         confirm: "确认", cancel: "重置", reserved_cards: "我的预约", reserved: "预约", me: "我", score: "分数", reserve_deck: "从牌堆预约",
         buy: "购买", reserve: "预约", close: "关闭", discard_msg: "宝石过多！请弃掉 %s 个", to_discard: "将弃掉",
         error_gold: "不能拿取黄金", error_max_3: "最多拿取 3 个", error_same: "不能拿两个不同色的", error_bank_low: "银行不足 4 个，无法拿 2 个",
-        click_to_view: "点击查看详情",
+        click_to_view: "点击查看详情", home: "退出房间", active_rooms: "活跃房间", no_rooms: "暂无房间",
+        vote_title: "%s 请求重置游戏", vote_desc: "所有玩家同意后游戏将重新开始", agree: "同意", decline: "拒绝",
+        error_funds: "资金不足！还需要 %s 个黄金",
 
-        log_join: "%s 加入了房间",
-        log_start: "游戏开始！",
-        log_take: "%s 拿取了: %s",
-        log_buy: "%s 购买了卡牌 (+%s 分)",
-        log_reserve: "%s 预约了一张卡牌",
-        log_noble: "👑 贵族拜访了 %s",
-        log_last_round: "%s 触发了最后一轮！"
+        log_join: "%s 加入了房间", log_reconnect: "%s 重新连接了", log_start: "游戏开始！初始顺序已随机",
+        log_take: "%s 拿取了: %s", log_buy: "%s 购买了卡牌 (+%s 分)",
+        log_reserve: "%s 预约了一张卡牌", log_noble: "👑 贵族拜访了 %s",
+        log_last_round: "%s 触发了最后一轮！", log_vote_fail: "重置投票未通过"
     },
     en: {
         lobby_title: "Game Lobby", your_name: "Your Name", enter_name: "Name", room_id: "Room ID", enter_room: "Room ID",
@@ -408,26 +431,35 @@ const TRANS = {
         confirm: "Confirm", cancel: "Reset", reserved_cards: "Reserved", reserved: "Rsrv", me: "Me", score: "Score", reserve_deck: "Reserve from Deck",
         buy: "Buy", reserve: "Reserve", close: "Close", discard_msg: "Too many tokens! Discard %s", to_discard: "Discarding",
         error_gold: "Cannot take Gold", error_max_3: "Max 3 tokens", error_same: "Invalid selection", error_bank_low: "Bank has < 4, cannot take 2",
-        click_to_view: "Click to view",
+        click_to_view: "Click to view", home: "Leave Room", active_rooms: "Active Rooms", no_rooms: "No active rooms",
+        vote_title: "%s requested reset", vote_desc: "Game will restart if all agree", agree: "Agree", decline: "Decline",
+        error_funds: "Insufficient funds! Need %s more gold",
 
-        log_join: "%s joined the room",
-        log_start: "Game Started!",
-        log_take: "%s took: %s",
-        log_buy: "%s bought a card (+%s pts)",
-        log_reserve: "%s reserved a card",
-        log_noble: "👑 Noble visited %s",
-        log_last_round: "%s triggered the Last Round!"
+        log_join: "%s joined the room", log_reconnect: "%s reconnected", log_start: "Game Started! Order randomized",
+        log_take: "%s took: %s", log_buy: "%s bought a card (+%s pts)",
+        log_reserve: "%s reserved a card", log_noble: "👑 Noble visited %s",
+        log_last_round: "%s triggered the Last Round!", log_vote_fail: "Reset vote failed"
     }
 };
+
+// --- Feature 4: UUID Generator for Persistence ---
+function uuidv4() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
 
 createApp({
     setup() {
         const socket = io();
         const socketId = ref('');
+        const myUid = ref(''); // Persistent ID
         const lang = ref('zh');
         
-        const myName = ref('Player ' + Math.floor(Math.random()*1000));
-        const roomName = ref('1');
+        const myName = ref('');
+        const roomName = ref('');
+        const roomList = ref([]); // Feature 5
         const isInRoom = ref(false);
         const gameStarted = ref(false);
         const players = ref([]);
@@ -435,6 +467,10 @@ createApp({
         const logs = ref([]);
         const lastAction = ref(null);
         const lastActionKey = ref(0);
+
+        // Feature 1: Vote State
+        const voteActive = ref(false);
+        const voteRequester = ref('');
 
         const gameState = reactive({
             turnIndex: 0, bank: {}, playerTokens: {}, playerBonuses: {}, reservedCards: {},
@@ -445,12 +481,33 @@ createApp({
         const selectedCard = ref(null);
         const remoteSelections = ref({});
         const showTurnNotification = ref(false);
-        
         const isDiscarding = ref(false);
         const discardCountNeeded = ref(0);
         const tokensToDiscard = ref([]);
         const tempTokensMap = reactive({});
         const pendingAction = ref(null);
+
+        // --- Init Persistence ---
+        onMounted(() => {
+            // Restore from storage
+            if (localStorage.getItem('splendor_uid')) {
+                myUid.value = localStorage.getItem('splendor_uid');
+            } else {
+                myUid.value = uuidv4();
+                localStorage.setItem('splendor_uid', myUid.value);
+            }
+
+            const storedName = localStorage.getItem('splendor_name');
+            const storedRoom = localStorage.getItem('splendor_room');
+            
+            if (storedName) myName.value = storedName;
+            
+            // Auto-join if room exists
+            if (storedRoom && storedName) {
+                roomName.value = storedRoom;
+                joinRoom();
+            }
+        });
 
         const t = (key, args=[]) => {
             let str = TRANS[lang.value][key] || key;
@@ -468,32 +525,54 @@ createApp({
         socket.on('connect', () => { socketId.value = socket.id; });
         socket.on('PLAYER_LIST', (list) => { players.value = list; });
         socket.on('ADD_LOG', (logObj) => { 
-            logs.value.push(logObj); 
-            lastAction.value = logObj;
-            lastActionKey.value++; 
+            logs.value.push(logObj); lastAction.value = logObj; lastActionKey.value++; 
             nextTick(() => { const b = document.querySelector('.log-box'); if(b) b.scrollTop = b.scrollHeight; });
         });
         socket.on('GAME_START', () => { gameStarted.value = true; });
         socket.on('STATE_SYNC', (state) => { Object.assign(gameState, state); });
         socket.on('SELECTION_UPDATE', (sels) => { remoteSelections.value = sels; });
-        socket.on('RESTART_GAME', () => { gameStarted.value = false; isReady.value = false; logs.value = []; lastAction.value = null; });
+        socket.on('RESTART_GAME', () => { 
+            gameStarted.value = false; isReady.value = false; logs.value = []; lastAction.value = null; voteActive.value = false;
+        });
+        
+        // Feature 5
+        socket.on('ROOM_LIST_UPDATE', (rooms) => { roomList.value = rooms; });
+        
+        // Feature 1
+        socket.on('VOTE_START', (data) => {
+             voteRequester.value = data.requester;
+             voteActive.value = true;
+        });
+        socket.on('VOTE_END', () => { voteActive.value = false; });
 
-        const isMyTurn = computed(() => gameStarted.value && players.value[gameState.turnIndex]?.id === socketId.value);
+        const isMyTurn = computed(() => gameStarted.value && players.value[gameState.turnIndex]?.uid === myUid.value);
         const currentPlayerName = computed(() => players.value[gameState.turnIndex]?.name || '');
         const allReady = computed(() => players.value.length > 0 && players.value.every(p => p.isReady));
-        const rankedPlayers = computed(() => [...players.value].sort((a,b) => (gameState.scores[b.id]||0) - (gameState.scores[a.id]||0)));
+        const rankedPlayers = computed(() => [...players.value].sort((a,b) => (gameState.scores[b.uid]||0) - (gameState.scores[a.uid]||0)));
 
         watch(() => gameState.turnIndex, (newVal) => {
-            if (players.value[newVal]?.id === socketId.value) {
+            if (players.value[newVal]?.uid === myUid.value) {
                 showTurnNotification.value = true;
                 setTimeout(() => showTurnNotification.value = false, 2000);
             }
         });
 
         const joinRoom = () => {
-            if (!roomName.value) return;
-            socket.emit('JOIN_ROOM', { room: roomName.value, name: myName.value });
+            if (!roomName.value || !myName.value) return;
+            // Feature 4: Save state
+            localStorage.setItem('splendor_name', myName.value);
+            localStorage.setItem('splendor_room', roomName.value);
+            
+            socket.emit('JOIN_ROOM', { room: roomName.value, name: myName.value, uid: myUid.value });
             isInRoom.value = true;
+        };
+
+        const leaveRoom = () => {
+            socket.emit('LEAVE_ROOM');
+            localStorage.removeItem('splendor_room'); // Clear persistence
+            isInRoom.value = false;
+            gameStarted.value = false;
+            roomName.value = '';
         };
 
         const toggleReady = () => {
@@ -501,11 +580,17 @@ createApp({
             socket.emit('UPDATE_READY', isReady.value);
         };
         const startGame = () => socket.emit('REQUEST_START');
-        const requestRestart = () => socket.emit('REQUEST_RESTART');
+        
+        // Feature 1
+        const requestRestartVote = () => socket.emit('REQUEST_RESTART_VOTE');
+        const submitVote = (agree) => {
+            socket.emit('SUBMIT_VOTE', agree);
+            voteActive.value = false; // Close local modal immediately
+        };
 
+        // --- Actions ---
         const selectToken = (color) => {
             if (!isMyTurn.value || color === 'gold') return; 
-            
             const currentCount = selectedTokens.value.length;
             const sameColorCount = selectedTokens.value.filter(c => c === color).length;
 
@@ -526,15 +611,13 @@ createApp({
 
         const confirmTakeTokens = () => {
             if (selectedTokens.value.length === 0) return;
-            
-            const currentTotal = Object.values(gameState.playerTokens[socketId.value]).reduce((a,b)=>a+b,0);
+            const currentTotal = Object.values(gameState.playerTokens[myUid.value]).reduce((a,b)=>a+b,0);
             const final = currentTotal + selectedTokens.value.length;
-            
             if (final > 10) {
                 isDiscarding.value = true;
                 discardCountNeeded.value = final - 10;
                 tokensToDiscard.value = [];
-                Object.assign(tempTokensMap, gameState.playerTokens[socketId.value]);
+                Object.assign(tempTokensMap, gameState.playerTokens[myUid.value]);
                 selectedTokens.value.forEach(c => tempTokensMap[c] = (tempTokensMap[c]||0) + 1);
                 pendingAction.value = { type: 'take', payload: { take: [...selectedTokens.value] } };
             } else {
@@ -543,49 +626,53 @@ createApp({
             }
         };
 
-        // 修改：增加 ownerId 参数
         const selectCard = (level, index, source, ownerId = null) => {
             let card = null;
-            let targetId = ownerId || socketId.value; // 如果没传 ownerId，默认当做自己的（用于 My Reserved 区域）
-
-            if (source === 'reserved') {
-                // 获取指定玩家的预约卡
-                if (gameState.reservedCards[targetId]) {
-                    card = gameState.reservedCards[targetId][index];
-                }
-            } else if (source === 'board') {
-                card = gameState.board[level][index];
-            }
-            
-            // 将 ownerId 存入 selectedCard 供弹窗判断
+            let targetId = ownerId || myUid.value;
+            if (source === 'reserved') card = gameState.reservedCards[targetId] ? gameState.reservedCards[targetId][index] : null;
+            else if (source === 'board') card = gameState.board[level][index];
             selectedCard.value = { level, index, source, card, ownerId: targetId };
-            
-            // 只有点面板上的卡才广播高亮，点别人的预约卡不广播（或者广播但也无所谓，简单起见只处理 board）
-            if (source === 'board') {
-                socket.emit('ACTION_SELECT_CARD', { level, index, source });
-            }
+            if (source === 'board') socket.emit('ACTION_SELECT_CARD', { level, index, source });
         };
-
         const selectDeck = (level) => {
             selectedCard.value = { level, index: -1, source: 'deck', card: { bonus: 'white', cost: {}, points: '?' } };
         };
         watch(selectedCard, (val) => { if (!val) socket.emit('ACTION_SELECT_CARD', null); });
 
+        // Feature 2: Client side cost check
         const executeBuy = () => {
+            if (!selectedCard.value) return;
+            const card = selectedCard.value.card;
+            
+            // Validate Cost
+            const tokens = gameState.playerTokens[myUid.value];
+            const bonuses = gameState.playerBonuses[myUid.value];
+            let goldNeeded = 0;
+            
+            for (const color in card.cost) {
+                const needed = Math.max(0, card.cost[color] - (bonuses[color] || 0));
+                const owned = tokens[color] || 0;
+                if (owned < needed) goldNeeded += (needed - owned);
+            }
+            
+            if ((tokens['gold'] || 0) < goldNeeded) {
+                alert(t('error_funds', goldNeeded - (tokens['gold'] || 0)));
+                return;
+            }
+
             socket.emit('ACTION_BUY_CARD', selectedCard.value);
             selectedCard.value = null;
         };
 
         const executeReserve = () => {
-            const currentTotal = Object.values(gameState.playerTokens[socketId.value]).reduce((a,b)=>a+b,0);
+            const currentTotal = Object.values(gameState.playerTokens[myUid.value]).reduce((a,b)=>a+b,0);
             const willGetGold = gameState.bank.gold > 0;
             const final = currentTotal + (willGetGold ? 1 : 0);
-            
             if (final > 10) {
                 isDiscarding.value = true;
                 discardCountNeeded.value = final - 10;
                 tokensToDiscard.value = [];
-                Object.assign(tempTokensMap, gameState.playerTokens[socketId.value]);
+                Object.assign(tempTokensMap, gameState.playerTokens[myUid.value]);
                 if (willGetGold) tempTokensMap['gold'] = (tempTokensMap['gold']||0) + 1;
                 pendingAction.value = { type: 'reserve', payload: { ...selectedCard.value } };
                 selectedCard.value = null;
@@ -601,29 +688,24 @@ createApp({
                 tokensToDiscard.value.push(color);
             }
         };
-
         const confirmDiscard = () => {
             if (tokensToDiscard.value.length !== discardCountNeeded.value) return;
             const action = pendingAction.value;
-            if (action.type === 'take') {
-                socket.emit('ACTION_TAKE_TOKENS', { take: action.payload.take, discard: tokensToDiscard.value });
-            } else {
-                socket.emit('ACTION_RESERVE_CARD', { ...action.payload, discard: tokensToDiscard.value });
-            }
-            isDiscarding.value = false;
-            selectedTokens.value = [];
-            pendingAction.value = null;
+            if (action.type === 'take') socket.emit('ACTION_TAKE_TOKENS', { take: action.payload.take, discard: tokensToDiscard.value });
+            else socket.emit('ACTION_RESERVE_CARD', { ...action.payload, discard: tokensToDiscard.value });
+            isDiscarding.value = false; selectedTokens.value = []; pendingAction.value = null;
         };
 
         return {
-            socketId, lang, t, tLog, toggleLang,
-            myName, roomName, isInRoom, joinRoom, toggleReady, players, isReady,
-            gameStarted, startGame, requestRestart, logs,
+            socketId, lang, t, tLog, toggleLang, myUid,
+            myName, roomName, isInRoom, joinRoom, leaveRoom, toggleReady, players, isReady,
+            gameStarted, startGame, logs, roomList,
             gameState, isMyTurn, currentPlayerName, allReady, rankedPlayers, showTurnNotification,
             selectToken, selectedTokens, confirmTakeTokens,
             selectedCard, selectCard, selectDeck, remoteSelections, executeBuy, executeReserve,
             isDiscarding, discardCountNeeded, tempTokensMap, tokensToDiscard, handleDiscardClick, confirmDiscard,
-            lastAction, lastActionKey
+            lastAction, lastActionKey,
+            voteActive, voteRequester, requestRestartVote, submitVote
         };
     }
 }).mount('#app');
