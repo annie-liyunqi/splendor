@@ -2,105 +2,130 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>宝石商人 P2P 联机版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>宝石商人 P2P 稳定版</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #2c3e50; color: white; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
-        .setup-panel { background: #34495e; padding: 20px; border-radius: 10px; margin-bottom: 20px; text-align: center; }
-        #game-area { display: none; width: 100%; max-width: 1000px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a2e; color: #e0e0e0; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+        .setup-panel { background: #16213e; padding: 25px; border-radius: 15px; border: 1px solid #0f3460; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; max-width: 400px; }
+        #game-area { display: none; width: 100%; max-width: 1100px; }
+        .status-bar { display: flex; justify-content: space-between; width: 100%; background: #0f3460; padding: 10px 20px; border-radius: 8px; margin-bottom: 20px; box-sizing: border-box; }
         
-        /* 布局样式 */
-        .main-layout { display: flex; gap: 20px; justify-content: space-around; }
-        .market { display: grid; grid-template-columns: repeat(4, 120px); gap: 10px; }
-        .card { width: 120px; height: 160px; background: white; color: #333; border-radius: 5px; padding: 10px; cursor: pointer; position: relative; font-size: 12px; }
-        .card.disabled { opacity: 0.5; cursor: not-allowed; }
+        .main-layout { display: flex; gap: 30px; flex-wrap: wrap; justify-content: center; }
+        .market { display: grid; grid-template-columns: repeat(4, 150px); gap: 15px; }
+        .card { background: #fff; color: #333; border-radius: 8px; padding: 15px; cursor: pointer; height: 180px; transition: transform 0.2s; position: relative; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .card:hover { transform: translateY(-5px); }
         
-        /* 角色指示 */
-        .turn-indicator { font-size: 20px; margin: 10px; padding: 10px; border-radius: 5px; background: #f1c40f; color: #2c3e50; font-weight: bold; }
-        .gem-btn { padding: 5px 10px; margin: 5px; cursor: pointer; border: none; border-radius: 3px; font-weight: bold; }
+        .bank { background: #16213e; padding: 20px; border-radius: 10px; min-width: 200px; }
+        .gem-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 8px; border-radius: 5px; cursor: pointer; }
+        .gem-row:hover { filter: brightness(1.2); }
         
-        /* 颜色配置 */
-        .white { background: #fff; color: #000; } .blue { background: #3498db; color: #fff; }
+        .white { background: #ffffff; color: #333; } .blue { background: #3498db; color: #fff; }
         .green { background: #2ecc71; color: #fff; } .red { background: #e74c3c; color: #fff; }
-        .black { background: #000; color: #fff; }
+        .black { background: #34495e; color: #fff; }
+        
+        button { cursor: pointer; padding: 10px 20px; border: none; border-radius: 5px; font-weight: bold; background: #e94560; color: white; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        input { padding: 10px; border-radius: 5px; border: none; margin: 10px 0; width: 80%; }
     </style>
 </head>
 <body>
 
-    <h1>Splendor P2P 联机版</h1>
-
     <div class="setup-panel" id="setup">
-        <div id="my-id-display">正在初始化我的 ID...</div>
-        <hr>
-        <input type="text" id="join-id" placeholder="输入房主的 ID">
-        <button onclick="joinGame()">加入朋友的游戏</button>
-        <p style="font-size: 0.8em; color: #bdc3c7;">最多支持 4 人，房主负责发牌和管理状态</p>
+        <h2 id="role-title">正在加载...</h2>
+        <div id="my-id-display">初始化 PeerJS...</div>
+        <div id="client-ui" style="display: none;">
+            <input type="text" id="join-id" placeholder="输入房主 ID">
+            <button onclick="joinGame()">加入游戏</button>
+        </div>
+        <div id="host-ui" style="display: none;">
+            <p>你是房主，请等待朋友们加入。</p>
+            <button onclick="hostResetGame()" style="background: #555;">重置所有进度</button>
+        </div>
     </div>
 
     <div id="game-area">
-        <div class="turn-indicator" id="turn-msg">等待玩家加入...</div>
+        <div class="status-bar">
+            <div id="turn-msg">等待中...</div>
+            <div id="connection-status">🟢 已连接</div>
+        </div>
         
         <div class="main-layout">
-            <div id="bank">
-                <h3>公共资源</h3>
+            <div class="bank">
+                <h3>公共宝石</h3>
                 <div id="bank-list"></div>
-                <button onclick="endTurn()" style="margin-top:20px; background:#e67e22; color:white; border:none; padding:10px;">结束我的回合</button>
+                <button onclick="endTurn()" id="end-btn" style="margin-top:20px; width: 100%;">完成操作</button>
             </div>
-
             <div class="market" id="market"></div>
         </div>
 
-        <hr>
-        <div id="players-status" style="display: flex; gap: 10px; flex-wrap: wrap;"></div>
+        <h3 style="margin-top: 30px;">玩家看板</h3>
+        <div id="players-status" style="display: flex; gap: 15px; flex-wrap: wrap;"></div>
     </div>
 
 <script>
-    // --- 游戏逻辑变量 ---
-    let peer, conn;
-    let myId = "";
-    let isHost = false;
-    let connections = []; // 仅房主使用
+    // --- 核心配置 ---
+    const ROOM_ID = 'annie-splendor-2024-private'; // 你的专属固定ID
+    const urlParams = new URLSearchParams(window.location.search);
+    const isHost = urlParams.get('role') === 'host';
+
+    let peer, conn, myId;
+    let connections = [];
     let gameState = {
         market: [],
         bank: { white: 7, blue: 7, green: 7, red: 7, black: 7 },
-        players: [], // { id, name, gems: {}, bonuses: {}, score: 0 }
+        players: [],
         currentTurnIndex: 0,
         gemsTakenThisTurn: 0
     };
 
-    // --- 初始化 Peer ---
-    // 为了方便朋友加入，建议你手动设置一个固定的房主ID，或者直接让系统生成
-    peer = new Peer(); 
-
-    peer.on('open', (id) => {
-        myId = id;
-        document.getElementById('my-id-display').innerHTML = `我的 ID: <b style="color:#f1c40f">${id}</b> <br> (发送给朋友)`;
-    });
-
-    // 房主监听连接
-    peer.on('connection', (c) => {
-        isHost = true;
-        connections.push(c);
-        setupConnection(c);
-        if(gameState.players.length === 0) {
-            // 第一个进入的是房主本人
-            addPlayer(myId);
+    // --- 初始化 ---
+    function init() {
+        if (isHost) {
+            document.getElementById('role-title').innerText = "👑 房主模式";
+            document.getElementById('host-ui').style.display = 'block';
+            peer = new Peer(ROOM_ID);
+            
+            // 房主尝试从本地加载旧进度
+            const saved = localStorage.getItem('splendor_save');
+            if (saved) gameState = JSON.parse(saved);
+        } else {
+            document.getElementById('role-title').innerText = "🎮 玩家模式";
+            document.getElementById('client-ui').style.display = 'block';
+            document.getElementById('join-id').value = ROOM_ID;
+            peer = new Peer();
         }
-        addPlayer(c.peer);
-        broadcastState();
-        document.getElementById('setup').style.display = 'none';
-        document.getElementById('game-area').style.display = 'block';
-    });
+
+        peer.on('open', (id) => {
+            myId = id;
+            document.getElementById('my-id-display').innerText = isHost ? `房间 ID: ${id}` : `我的 ID: ${id}`;
+            if (isHost && gameState.players.length > 0) {
+                // 如果是恢复现场，直接显示游戏区
+                showGame();
+            }
+        });
+
+        // 房主处理连接
+        peer.on('connection', (c) => {
+            setupConnection(c);
+            if (isHost) {
+                connections.push(c);
+                addPlayer(c.peer);
+                setTimeout(() => broadcastState(), 500); // 延迟同步确保连接稳固
+                showGame();
+            }
+        });
+    }
 
     function joinGame() {
         const targetId = document.getElementById('join-id').value;
         conn = peer.connect(targetId);
         setupConnection(conn);
-        document.getElementById('setup').style.display = 'none';
-        document.getElementById('game-area').style.display = 'block';
+        showGame();
     }
 
     function setupConnection(c) {
+        conn = c; 
         c.on('data', (data) => {
             if (data.type === 'STATE_UPDATE') {
                 gameState = data.state;
@@ -110,9 +135,12 @@
                 handleAction(data.action);
             }
         });
+        c.on('close', () => {
+            document.getElementById('connection-status').innerText = "🔴 连接已断开，请刷新重连";
+        });
     }
 
-    // --- 核心逻辑 ---
+    // --- 游戏逻辑 ---
     function addPlayer(pid) {
         if (!gameState.players.find(p => p.id === pid)) {
             gameState.players.push({
@@ -131,7 +159,7 @@
             gameState.market.push({
                 points: Math.floor(Math.random() * 3),
                 bonus: colors[Math.floor(Math.random() * 5)],
-                cost: { [colors[Math.floor(Math.random() * 5)]]: Math.floor(Math.random() * 3) + 1 }
+                cost: { [colors[Math.floor(Math.random() * 5)]]: Math.floor(Math.random() * 4) + 1 }
             });
         }
     }
@@ -148,83 +176,111 @@
             }
         } else if (act.type === 'BUY') {
             const card = gameState.market[act.index];
-            // 简化购买逻辑
-            let costColor = Object.keys(card.cost)[0];
-            let actualNeed = Math.max(0, card.cost[costColor] - (p.bonuses[costColor] || 0));
-            if (p.gems[costColor] >= actualNeed) {
-                p.gems[costColor] -= actualNeed;
-                gameState.bank[costColor] += actualNeed;
+            const color = Object.keys(card.cost)[0];
+            const need = Math.max(0, card.cost[color] - (p.bonuses[color] || 0));
+            
+            if (p.gems[color] >= need) {
+                p.gems[color] -= need;
+                gameState.bank[color] += need;
                 p.bonuses[card.bonus]++;
                 p.score += card.points;
+                // 补牌
                 gameState.market[act.index] = {
                     points: Math.floor(Math.random() * 3),
                     bonus: ['white', 'blue', 'green', 'red', 'black'][Math.floor(Math.random() * 5)],
-                    cost: { [['white', 'blue', 'green', 'red', 'black'][Math.floor(Math.random() * 5)]]: Math.floor(Math.random() * 3) + 1 }
+                    cost: { [['white', 'blue', 'green', 'red', 'black'][Math.floor(Math.random() * 5)]]: Math.floor(Math.random() * 4) + 1 }
                 };
-                endTurn();
+                gameState.currentTurnIndex = (gameState.currentTurnIndex + 1) % gameState.players.length;
+                gameState.gemsTakenThisTurn = 0;
             }
+        } else if (act.type === 'END_TURN') {
+            gameState.currentTurnIndex = (gameState.currentTurnIndex + 1) % gameState.players.length;
+            gameState.gemsTakenThisTurn = 0;
         }
         broadcastState();
     }
 
-    function sendAction(act) {
-        if (isHost) {
-            handleAction(act);
-        } else {
-            conn.send({ type: 'ACTION', action: act });
-        }
-    }
-
-    function endTurn() {
-        if(isHost) {
-            gameState.currentTurnIndex = (gameState.currentTurnIndex + 1) % gameState.players.length;
-            gameState.gemsTakenThisTurn = 0;
-            broadcastState();
-        } else {
-            // 客户端请求结束回合不需要特殊数据，只需通知房主，房主逻辑里控制
-        }
-    }
-
     function broadcastState() {
         if (isHost) {
-            connections.forEach(c => c.send({ type: 'STATE_UPDATE', state: gameState }));
+            localStorage.setItem('splendor_save', JSON.stringify(gameState));
+            connections.forEach(c => {
+                if (c.open) c.send({ type: 'STATE_UPDATE', state: gameState });
+            });
             render();
         }
     }
 
-    // --- 渲染界面 ---
-    function render() {
-        const isMyTurn = gameState.players[gameState.currentTurnIndex]?.id === myId;
-        document.getElementById('turn-msg').innerText = isMyTurn ? "🔴 轮到你了！" : `等待 ${gameState.currentTurnIndex + 1} 号玩家...`;
+    function sendAction(act) {
+        if (isHost) handleAction(act);
+        else conn.send({ type: 'ACTION', action: act });
+    }
 
-        // 渲染银行
+    function endTurn() {
+        sendAction({ type: 'END_TURN', player: myId });
+    }
+
+    function hostResetGame() {
+        if (confirm("确定重置所有玩家进度吗？")) {
+            localStorage.removeItem('splendor_save');
+            location.reload();
+        }
+    }
+
+    // --- UI 渲染 ---
+    function showGame() {
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('game-area').style.display = 'block';
+        render();
+    }
+
+    function render() {
+        const pIndex = gameState.currentTurnIndex;
+        const activePlayer = gameState.players[pIndex];
+        const isMyTurn = activePlayer?.id === myId;
+        
+        document.getElementById('turn-msg').innerHTML = isMyTurn ? 
+            `<b style="color:#e94560">➔ 轮到你了！</b>` : 
+            `等待玩家 ${pIndex + 1} 行动...`;
+        
+        document.getElementById('end-btn').disabled = !isMyTurn;
+
         let bankHtml = '';
         for (let c in gameState.bank) {
-            bankHtml += `<div class="gem-btn ${c}" onclick="sendAction({type:'TAKE_GEM', color:'${c}', player:'${myId}'})">${c}: ${gameState.bank[c]}</div>`;
+            bankHtml += `<div class="gem-row ${c}" onclick="sendAction({type:'TAKE_GEM', color:'${c}', player:'${myId}'})">
+                <span>${c.toUpperCase()}</span> <b>${gameState.bank[c]}</b>
+            </div>`;
         }
         document.getElementById('bank-list').innerHTML = bankHtml;
 
-        // 渲染市场
         let marketHtml = '';
         gameState.market.forEach((card, i) => {
-            let costKey = Object.keys(card.cost)[0];
+            const cKey = Object.keys(card.cost)[0];
             marketHtml += `<div class="card" onclick="sendAction({type:'BUY', index:${i}, player:'${myId}'})">
-                <b>${card.points} 分</b><br>奖励: ${card.bonus}<br>消耗: ${card.cost[costKey]} ${costKey}
+                <div style="font-size:24px; font-weight:bold">${card.points}</div>
+                <div style="margin:10px 0">奖励: <span class="${card.bonus}" style="padding:2px 5px; border-radius:3px">${card.bonus}</span></div>
+                <div style="position:absolute; bottom:15px; left:15px; border-top:1px solid #ccc; width:80%; padding-top:5px;">
+                    消耗: ${card.cost[cKey]} ${cKey}
+                </div>
             </div>`;
         });
         document.getElementById('market').innerHTML = marketHtml;
 
-        // 渲染玩家列表
-        let playerHtml = '';
+        let playersHtml = '';
         gameState.players.forEach((p, idx) => {
-            playerHtml += `<div style="border:1px solid #7f8c8d; padding:5px; font-size:11px;">
-                P${idx+1}: ${p.id.substring(0,4)} | <b>${p.score}分</b><br>
-                宝石: W${p.gems.white} B${p.gems.blue} G${p.gems.green} R${p.gems.red} K${p.gems.black}<br>
-                奖励: W${p.bonuses.white} B${p.bonuses.blue} G${p.bonuses.green} R${p.bonuses.red} K${p.bonuses.black}
+            const isCurrent = idx === pIndex;
+            playersHtml += `<div style="background:${isCurrent ? '#0f3460' : '#16213e'}; padding:15px; border-radius:10px; border: 1px solid ${isCurrent ? '#e94560' : '#333'}; min-width:180px;">
+                <div style="font-weight:bold; border-bottom:1px solid #333; margin-bottom:10px;">玩家 ${idx+1} ${p.id === myId ? '(你)' : ''}</div>
+                <div style="font-size:20px; color:#f1c40f">分数: ${p.score}</div>
+                <div style="font-size:12px; margin-top:10px">
+                    宝石: W${p.gems.white} B${p.gems.blue} G${p.gems.green} R${p.gems.red} K${p.gems.black}<br>
+                    加成: W${p.bonuses.white} B${p.bonuses.blue} G${p.bonuses.green} R${p.bonuses.red} K${p.bonuses.black}
+                </div>
             </div>`;
         });
-        document.getElementById('players-status').innerHTML = playerHtml;
+        document.getElementById('players-status').innerHTML = playersHtml;
     }
+
+    init();
 </script>
 </body>
 </html>
