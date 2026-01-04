@@ -3,75 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P 宝石商人 - 私人联机版</title>
+    <title>Splendor Web</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script src="cards.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #2c3e50; color: white; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
+        .container { max-width: 1200px; margin: 0 auto; position: relative; }
+        .lang-switch { position: absolute; top: 0; right: 0; }
         .card { background: #34495e; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        
         button { background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; margin: 5px; }
-        button:disabled { background: #7f8c8d; cursor: not-allowed; }
+        button:disabled { background: #7f8c8d; cursor: not-allowed; opacity: 0.7; }
         button.secondary { background: #e67e22; }
-        input { padding: 10px; border-radius: 4px; border: none; width: 200px; }
-        .tokens { display: flex; gap: 10px; margin-top: 10px; }
-        .token-btn { width: 50px; height: 50px; border-radius: 50%; border: 2px solid #fff; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; color: black; }
+        
+        input { padding: 10px; border-radius: 4px; border: none; width: 200px; margin: 5px; }
+        
+        /* Token Styles */
+        .token-btn { 
+            width: 50px; height: 50px; border-radius: 50%; border: 2px solid #fff; 
+            font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; 
+            color: black; user-select: none; transition: transform 0.1s;
+        }
+        .token-btn:active { transform: scale(0.95); }
         .red { background: #e74c3c; } .green { background: #2ecc71; } .blue { background: #3498db; }
         .white { background: #ecf0f1; } .black { background: #2c3e50; color: white; border-color: #7f8c8d; }
         .gold { background: #f1c40f; }
+
         .log-box { background: #000; height: 150px; overflow-y: scroll; padding: 10px; font-family: monospace; font-size: 12px; margin-top: 20px; }
         .player-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-        .player-card { border: 2px solid transparent; padding: 10px; background: #455a64; }
+        .player-card { border: 2px solid transparent; padding: 10px; background: #455a64; position: relative; }
         .active-turn { border-color: #f1c40f; box-shadow: 0 0 10px #f1c40f; }
         
-        /* 游戏面板样式 */
+        /* Game Board */
         .game-board { display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px; }
         .card-row { display: flex; gap: 10px; align-items: center; }
         .level-label { width: 60px; font-weight: bold; color: #bdc3c7; }
-        .mini-token { 
-            display: inline-flex; width: 20px; height: 20px; border-radius: 50%; 
-            font-size: 11px; font-weight: bold; align-items: center; justify-content: center; 
-            color: #333; border: 1px solid rgba(255,255,255,0.4); margin-right: 2px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.3);
-        }
-        .mini-token.red { background: #e74c3c; color: white; } 
-        .mini-token.green { background: #2ecc71; color: white; } 
-        .mini-token.blue { background: #3498db; color: white; }
-        .mini-token.white { background: #ecf0f1; color: #2c3e50; } 
-        .mini-token.black { background: #2c3e50; color: white; border: 1px solid #7f8c8d; }
-        .mini-token.gold { background: #f1c40f; color: #8e44ad; }
-
+        
         .splendor-card { 
             width: 100px; height: 140px; background: white; color: #2c3e50; 
             border-radius: 8px; padding: 8px; display: flex; flex-direction: column; 
             justify-content: space-between; cursor: pointer; position: relative;
             box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-            transition: transform 0.2s;
-            border: 1px solid #bdc3c7;
-            overflow: hidden;
+            transition: transform 0.2s; border: 1px solid #bdc3c7; overflow: hidden;
         }
-        .splendor-card::before {
-            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 10px;
-        }
+        .splendor-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 10px; }
         .splendor-card.bonus-red::before { background: #e74c3c; }
         .splendor-card.bonus-green::before { background: #2ecc71; }
         .splendor-card.bonus-blue::before { background: #3498db; }
         .splendor-card.bonus-white::before { background: #bdc3c7; }
         .splendor-card.bonus-black::before { background: #2c3e50; }
-
-        .splendor-card:hover { transform: translateY(-4px); box-shadow: 0 8px 12px rgba(0,0,0,0.3); }
-        .card-points { position: absolute; top: 15px; left: 8px; font-size: 20px; font-weight: 900; text-shadow: 1px 1px 0 #fff; }
+        
+        .splendor-card:hover { transform: translateY(-4px); z-index: 5; }
+        .card-points { position: absolute; top: 15px; left: 8px; font-size: 20px; font-weight: 900; }
         .card-bonus { position: absolute; top: 15px; right: 8px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.1); }
         
         .card-costs { display: flex; flex-direction: column-reverse; gap: 4px; margin-bottom: 5px; }
-        .cost-item { display: flex; align-items: center; gap: 4px; justify-content: flex-start; }
-        .cost-dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); box-shadow: inset 0 0 4px rgba(0,0,0,0.3); }
+        .cost-item { display: flex; align-items: center; gap: 4px; }
+        .cost-dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); }
         
-        /* 新布局样式 */
-        .main-layout { display: flex; align-items: center; justify-content: center; gap: 30px; margin-bottom: 20px; }
+        .main-layout { display: flex; align-items: flex-start; justify-content: center; gap: 30px; margin-bottom: 20px; }
         
-        .noble-list { display: flex; flex-direction: column; gap: 10px; justify-content: center; }
+        .noble-list { display: flex; flex-direction: column; gap: 10px; }
         .noble-card { 
             width: 80px; height: 80px; background: #f39c12; color: white; 
             border-radius: 4px; padding: 5px; font-size: 10px;
@@ -81,35 +73,57 @@
         .token-column { display: flex; flex-direction: column; gap: 10px; align-items: center; background: #223; padding: 15px; border-radius: 8px; }
         .tokens-vertical { display: flex; flex-direction: column; gap: 10px; }
 
-        /* 迷你卡牌样式 */
-        .mini-card {
-            width: 30px; height: 40px; border: 1px solid #7f8c8d; border-radius: 4px;
-            position: relative; background: white; margin-right: 2px; margin-bottom: 2px;
-            display: inline-block;
-        }
+        .mini-card { width: 30px; height: 40px; border: 1px solid #7f8c8d; border-radius: 4px; background: white; display: inline-block; position: relative; margin: 2px; }
         .mini-card.bonus-red { background: #e74c3c; }
         .mini-card.bonus-green { background: #2ecc71; }
         .mini-card.bonus-blue { background: #3498db; }
         .mini-card.bonus-white { background: #ecf0f1; }
         .mini-card.bonus-black { background: #2c3e50; border: 1px solid #fff; }
-        .mini-card .points { 
-            font-size: 10px; font-weight: bold; color: white; 
-            text-shadow: 1px 1px 0 #000; position: absolute; top: 2px; left: 2px; 
+        
+        .mini-token { 
+            display: inline-flex; width: 20px; height: 20px; border-radius: 50%; 
+            font-size: 11px; font-weight: bold; align-items: center; justify-content: center; 
+            color: #333; border: 1px solid rgba(255,255,255,0.4); margin-right: 2px;
         }
-        .mini-card.bonus-white .points { color: #2c3e50; text-shadow: none; }
+        .mini-token.red { background: #e74c3c; color: white; } 
+        .mini-token.green { background: #2ecc71; color: white; } 
+        .mini-token.blue { background: #3498db; color: white; }
+        .mini-token.white { background: #ecf0f1; color: #2c3e50; } 
+        .mini-token.black { background: #2c3e50; color: white; border: 1px solid #7f8c8d; }
+        .mini-token.gold { background: #f1c40f; color: #8e44ad; }
 
-        /* 选中高亮遮罩 */
+        /* --- 新增：迷你预约卡样式 --- */
+        .mini-reserved {
+            width: 20px; height: 28px; /* 约 5:7 比例 */
+            border: 1px solid #95a5a6; border-radius: 3px;
+            display: inline-block; margin-right: 3px;
+            position: relative; cursor: pointer;
+            background-color: #ecf0f1;
+            transition: transform 0.1s;
+        }
+        .mini-reserved:hover { transform: scale(1.2); z-index: 10; border-color: white; }
+        /* 颜色变体 */
+        .mini-reserved.bonus-red { background: #e74c3c; }
+        .mini-reserved.bonus-green { background: #2ecc71; }
+        .mini-reserved.bonus-blue { background: #3498db; }
+        .mini-reserved.bonus-white { background: #ecf0f1; }
+        .mini-reserved.bonus-black { background: #2c3e50; border: 1px solid #fff; }
+        
+        .mini-reserved .points {
+            position: absolute; top: 0; left: 0; width: 100%; text-align: center;
+            font-size: 10px; font-weight: 900; color: white;
+            text-shadow: 1px 1px 0 #000; pointer-events: none;
+        }
+        .mini-reserved.bonus-white .points { color: #2c3e50; text-shadow: none; }
+
         .selection-overlay {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            border: 3px solid #e74c3c; border-radius: 8px;
-            background: rgba(0,0,0,0.3);
+            border: 3px solid #e74c3c; border-radius: 8px; background: rgba(0,0,0,0.3);
             display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: bold; font-size: 14px; text-align: center;
-            z-index: 10; pointer-events: none;
-            text-shadow: 1px 1px 2px black;
+            color: white; font-weight: bold; font-size: 14px; text-shadow: 1px 1px 2px black;
+            pointer-events: none;
         }
 
-        /* 选中卡牌操作栏 */
         .action-modal {
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
             background: #2c3e50; border: 2px solid #f1c40f; padding: 20px;
@@ -117,7 +131,6 @@
             z-index: 100; display: flex; gap: 20px; align-items: center;
         }
 
-        /* 轮到自己提示 */
         .turn-notification {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
             background: rgba(0, 0, 0, 0.8); color: #f1c40f; padding: 30px 50px;
@@ -125,128 +138,123 @@
             pointer-events: none; animation: fadeInOut 2s ease-in-out;
         }
         @keyframes fadeInOut {
-            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
-            20% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
-            80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-            100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            0% { opacity: 0; transform: scale(0.8); }
+            20% { opacity: 1; transform: scale(1.1); }
+            80% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(0.8); }
         }
+
+        .last-action-bar {
+            background: rgba(0, 0, 0, 0.4);
+            border-left: 5px solid #f1c40f;
+            padding: 12px 20px;
+            margin: 0 0 20px 0;
+            border-radius: 4px;
+            font-size: 15px;
+            color: #ecf0f1;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            animation: flashHighlight 1s ease-out;
+        }
+        @keyframes flashHighlight {
+            0% { background: rgba(241, 196, 15, 0.4); }
+            100% { background: rgba(0, 0, 0, 0.4); }
+        }
+        .action-icon { margin-right: 10px; font-size: 18px; }
     </style>
 </head>
 <body>
 
 <div id="app" class="container">
-    <h1>💎 简易 P2P 宝石商人</h1>
+    <div class="lang-switch">
+        <button class="secondary" @click="toggleLang" style="font-size: 12px; padding: 5px;">
+            {{ lang === 'zh' ? 'Switch to English' : '切换中文' }}
+        </button>
+    </div>
+
+    <h1>💎 Splendor Web</h1>
 
     <div v-if="!gameStarted" class="card">
-        <h3>联机大厅</h3>
-        <div v-if="!myPeerId">正在初始化 P2P 网络...</div>
-        <div v-else>
-            <p>你的 ID: <strong>{{ myPeerId }}</strong></p>
-            <div style="margin-bottom: 10px;">
-                <label>你的名字: </label>
-                <input v-model="myPlayerName" @change="updateName" placeholder="输入名字">
+        <h3>{{ t('lobby_title') }}</h3>
+        <div style="margin-bottom: 20px;">
+            <div>
+                <label>{{ t('your_name') }}: </label>
+                <input v-model="myName" :placeholder="t('enter_name')">
             </div>
-            
-            <div style="margin-bottom: 15px;">
-                <button @click="setRole(true)" :class="{ secondary: !isHost }">创建房间 (房主)</button>
-                <button @click="setRole(false)" :class="{ secondary: isHost }">加入房间 (客机)</button>
+            <div>
+                <label>{{ t('room_id') }}: </label>
+                <input v-model="roomName" :placeholder="t('enter_room')">
             </div>
-            
-            <div v-if="isHost">
-                <p>我是房主。等待朋友加入...</p>
-                <p>将你的 ID 发给朋友，让他们填入下方并连接。</p>
-                <ul>
-                    <li v-for="p in players" :key="p.id">{{ p.name }} ({{ p.id }}) <span v-if="p.id === myPeerId">(你)</span></li>
-                </ul>
-                <button @click="startGame" :disabled="players.length < 2">开始游戏 (当前 {{ players.length }} 人)</button>
-            </div>
+            <button @click="joinRoom">{{ t('join_room') }}</button>
+        </div>
+        
+        <div v-if="isInRoom">
+            <p>{{ t('players_in_room') }} ({{ roomName }}):</p>
+            <ul>
+                <li v-for="p in players" :key="p.id">
+                    {{ p.name }} <span v-if="p.id === socketId">({{ t('you') }})</span>
+                    <span v-if="p.isReady" style="color: #2ecc71; font-weight: bold;">✓</span>
+                </li>
+            </ul>
 
-            <div v-else-if="!isConnectedToHost">
-                <input v-model="hostIdInput" placeholder="输入房主 ID">
-                <button @click="joinGame">加入房间</button>
-            </div>
-
-            <div v-else>
-                <p>已连接到房主！等待房主开始游戏...</p>
-                <p>当前玩家列表:</p>
-                <ul>
-                    <li v-for="p in players" :key="p.id">{{ p.name }}</li>
-                </ul>
+            <div style="margin-top: 15px;">
+                <button @click="toggleReady" :class="{ secondary: isReady }">
+                    {{ isReady ? t('cancel_ready') : t('ready') }}
+                </button>
+                <button @click="startGame" v-if="players.length >= 2" :disabled="!allReady">
+                    {{ t('start_game') }}
+                </button>
+                <div v-else style="color: #bdc3c7; font-size: 12px; margin-top: 5px;">{{ t('need_more_players') }}</div>
             </div>
         </div>
     </div>
 
     <div v-else class="card">
         <div style="display:flex; justify-content:space-between; align-items: center;">
-            <h3>回合: {{ currentPlayerName }}</h3>
-            <div v-if="gameState.gameOver" style="color: #e74c3c; font-weight: bold;">🏁 游戏已结束</div>
-            <div v-else-if="isMyTurn" style="color: #f1c40f; font-weight: bold;">🌟 你的回合</div>
-            <span>我的身份: {{ isHost ? '房主' : '玩家' }}</span>
-            <button @click="requestRestart" class="secondary" style="font-size: 12px; padding: 5px 10px;">请求重开</button>
+            <h3>{{ t('turn') }}: {{ currentPlayerName }}</h3>
+            <div v-if="gameState.gameOver" style="color: #e74c3c; font-weight: bold;">🏁 {{ t('game_over') }}</div>
+            <div v-else-if="isMyTurn" style="color: #f1c40f; font-weight: bold;">🌟 {{ t('your_turn') }}</div>
+            <button @click="requestRestart" class="secondary" style="font-size: 12px; padding: 5px 10px;">{{ t('reset_game') }}</button>
         </div>
 
-        <!-- 轮到自己提示 -->
-        <div v-if="showTurnNotification" class="turn-notification">
-            👋 轮到你了！
-        </div>
+        <div v-if="showTurnNotification" class="turn-notification">👋 {{ t('your_turn') }}!</div>
 
-        <!-- 重开投票弹窗 -->
-        <div v-if="voteActive" class="action-modal" style="flex-direction: column;">
-            <h4>有人请求重新开始游戏，是否同意？</h4>
-            <div style="display: flex; gap: 20px;">
-                <button @click="submitVote(true)">同意</button>
-                <button @click="submitVote(false)" class="secondary">拒绝</button>
-            </div>
-        </div>
-
-        <!-- 游戏结束结算画面 -->
         <div v-if="gameState.gameOver" class="card" style="background: #2c3e50; border: 2px solid #f1c40f; text-align: center;">
-            <h2>🏆 游戏结束 - 排行榜</h2>
+            <h2>🏆 {{ t('leaderboard') }}</h2>
             <div style="display: flex; flex-direction: column; gap: 10px; align-items: center; margin: 20px 0;">
                 <div v-for="(p, idx) in rankedPlayers" :key="p.id" 
                      style="background: #34495e; padding: 10px 20px; border-radius: 5px; width: 80%; display: flex; justify-content: space-between;">
                     <span>#{{ idx + 1 }} <strong>{{ p.name }}</strong></span>
-                    <span>{{ gameState.scores[p.id] }} 分 ({{ p.cardCount }} 张卡)</span>
+                    <span>{{ gameState.scores[p.id] }} pts</span>
                 </div>
             </div>
-            
-            <div v-if="!isReady">
-                <button @click="setReady">准备下一局</button>
-            </div>
-            <div v-else>
-                <p>已准备，等待其他人...</p>
-            </div>
-
-            <div v-if="isHost">
-                <p>当前准备人数: {{ readyCount }} / {{ players.length }}</p>
-                <button @click="restartGame" :disabled="readyCount < players.length">开始新一轮</button>
-            </div>
+            <button @click="requestRestart">{{ t('back_to_lobby') }}</button>
         </div>
 
-        <!-- 游戏主区域 (贵族 - 卡牌 - 筹码) -->
         <div class="main-layout">
-            <!-- 左侧：贵族 -->
             <div v-if="!gameState.gameOver" class="noble-list">
                 <div v-for="(noble, idx) in gameState.nobles" :key="idx" class="noble-card">
-                    <div style="font-weight:bold; font-size:14px;">3 pts</div>
+                    <div style="font-weight:bold; font-size:14px;">{{noble.points}}</div>
                     <div v-for="(count, color) in noble.cost" :key="color" style="display:flex; align-items:center; gap:3px;">
                         <div class="cost-dot" :class="color"></div> {{ count }}
                     </div>
                 </div>
             </div>
 
-            <!-- 中间：游戏面板 -->
             <div class="game-board">
                 <div v-for="lvl in ['level3', 'level2', 'level1']" :key="lvl" class="card-row">
                     <div class="level-label">{{ lvl === 'level3' ? 'III' : (lvl === 'level2' ? 'II' : 'I') }}</div>
                     <div v-for="(card, idx) in gameState.board[lvl]" :key="idx" 
                          class="splendor-card" :class="'bonus-' + card.bonus" @click="selectCard(lvl, idx, 'board')"
-                         :style="{ opacity: gameState.gameOver ? 0.6 : 1, cursor: gameState.gameOver ? 'default' : 'pointer' }">
+                         :style="{ opacity: gameState.gameOver ? 0.6 : 1 }">
+                         
                         <template v-for="(sel, pid) in remoteSelections" :key="pid">
                             <div v-if="sel && sel.source === 'board' && sel.level === lvl && sel.index === idx" class="selection-overlay">
-                                <div class="selection-label">{{ players.find(p => p.id === pid)?.name }}</div>
+                                <div>{{ players.find(p => p.id === pid)?.name }}</div>
                             </div>
                         </template>
+
                         <div class="card-points" v-if="card.points > 0">{{ card.points }}</div>
                         <div class="card-bonus" :class="card.bonus"></div>
                         <div style="flex-grow: 1;"></div>
@@ -257,18 +265,16 @@
                             </div>
                         </div>
                     </div>
-                    <div v-if="gameState.decks[lvl].length > 0" 
+                    <div v-if="gameState.decks[lvl] && gameState.decks[lvl].length > 0" 
                          style="font-size: 10px; color: #7f8c8d; cursor: pointer; border: 1px dashed #7f8c8d; padding: 5px; border-radius: 4px;"
-                         @click="reserveFromDeck(lvl)">
+                         @click="selectDeck(lvl)">
                         🎴 {{ gameState.decks[lvl].length }}
-                        <div style="font-size: 8px; color: #f1c40f;">点击预约</div>
                     </div>
                 </div>
             </div>
 
-            <!-- 右侧：筹码 -->
             <div class="token-column">
-                <div style="color: #bdc3c7; font-size: 12px; margin-bottom: 5px; font-weight: bold;">公共资源</div>
+                <div style="color: #bdc3c7; font-size: 12px; margin-bottom: 5px; font-weight: bold;">{{ t('bank') }}</div>
                 <div class="tokens-vertical">
                     <div v-for="(count, color) in gameState.bank" :key="color" 
                          class="token-btn" :class="color"
@@ -276,907 +282,244 @@
                         {{ count }}
                     </div>
                 </div>
-                <div v-if="selectedTokens.length > 0" style="margin-top: 10px; display: flex; flex-direction: column; gap: 5px; width: 100%;">
-                    <div style="font-size: 12px;">已选:</div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 2px;">
-                        <span v-for="t in selectedTokens" :key="t" :class="t" style="padding: 2px 5px; border-radius: 3px; color: black; font-size: 10px;">{{ t }}</span>
+                
+                <div v-if="selectedTokens.length > 0" style="margin-top: 10px; width: 100%;">
+                    <div style="font-size: 12px;">{{ t('selected') }}:</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 5px; margin: 5px 0;">
+                        <span v-for="(t, i) in selectedTokens" :key="i" :class="t" 
+                              style="padding: 2px 8px; border-radius: 10px; color: black; font-size: 10px; border: 1px solid white;">
+                            {{ t }}
+                        </span>
                     </div>
-                    <button @click="confirmTakeTokens" size="small" :disabled="gameState.gameOver" style="font-size: 12px; padding: 5px; width: 100%;">确认</button>
-                    <button @click="selectedTokens = []" class="secondary" size="small" :disabled="gameState.gameOver" style="font-size: 12px; padding: 5px; width: 100%;">重置</button>
+                    <button @click="confirmTakeTokens" size="small" style="font-size: 12px; padding: 5px; width: 100%;">{{ t('confirm') }}</button>
+                    <button @click="selectedTokens = []" class="secondary" size="small" style="font-size: 12px; padding: 5px; width: 100%;">{{ t('cancel') }}</button>
                 </div>
             </div>
         </div>
 
-        <!-- 我的预约卡牌 -->
-        <div v-if="gameState.reservedCards[myPeerId] && gameState.reservedCards[myPeerId].length > 0" class="card" style="background: #2c3e50; border: 1px solid #f1c40f;">
-            <h4>我的预约卡牌 (点击购买)</h4>
-            <div style="display: flex; gap: 10px;">
-                <div v-for="(card, idx) in gameState.reservedCards[myPeerId]" :key="idx" 
-                     class="splendor-card" :class="'bonus-' + card.bonus" @click="selectCard(null, idx, 'reserved')"
-                     :style="{ opacity: gameState.gameOver ? 0.6 : 1, cursor: gameState.gameOver ? 'default' : 'pointer' }">
-                    <template v-for="(sel, pid) in remoteSelections" :key="pid">
-                        <div v-if="sel && sel.source === 'reserved' && sel.index === idx && sel.ownerId === myPeerId" class="selection-overlay">
-                            <div class="selection-label">{{ players.find(p => p.id === pid)?.name }}</div>
-                        </div>
-                    </template>
-                    <div class="card-points" v-if="card.points > 0">{{ card.points }}</div>
-                    <div class="card-bonus" :class="card.bonus"></div>
-                    <div style="flex-grow: 1;"></div>
-                    <div class="card-costs">
-                        <div v-for="(count, color) in card.cost" :key="color" class="cost-item">
-                            <div class="cost-dot" :class="color"></div>
-                            <span style="font-weight:bold; font-size:14px;">{{ count }}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div v-if="lastAction" class="last-action-bar" :key="lastActionKey">
+            <span class="action-icon">📢</span>
+            <span>{{ tLog(lastAction) }}</span>
         </div>
 
         <div class="player-list">
             <div v-for="(p, index) in players" :key="p.id" 
                  class="player-card" 
                  :class="{ 'active-turn': index === gameState.turnIndex }">
-                <strong>{{ p.name }}</strong> <span v-if="p.id === myPeerId">(我)</span>
-                <div style="font-size: 0.9em; margin-top: 5px; display: flex; align-items: center; flex-wrap: wrap;">
-                    <span style="margin-right: 5px;">宝石:</span>
-                    <div v-for="(count, color) in gameState.playerTokens[p.id]" :key="color" 
-                         v-show="count > 0" class="mini-token" :class="color">
-                        {{ count }}
+                
+                <div style="display:flex; justify-content: space-between;">
+                    <div><strong>{{ p.name }}</strong> <span v-if="p.id === socketId">({{ t('me') }})</span></div>
+                    <div>{{ t('score') }}: <strong>{{ gameState.scores[p.id] || 0 }}</strong></div>
+                </div>
+
+                <div style="font-size: 0.9em; margin-top: 5px;">
+                    <span style="margin-right: 5px;">💎:</span>
+                    <span v-for="(count, color) in gameState.playerTokens[p.id]" :key="color" v-show="count > 0" class="mini-token" :class="color">{{ count }}</span>
+                </div>
+                
+                <div style="font-size: 0.9em; margin-top: 5px;">
+                    <span style="margin-right: 5px;">🃏:</span>
+                    <span v-for="(count, color) in gameState.playerBonuses[p.id]" :key="color" v-show="count > 0" class="mini-token" :class="color" style="border-radius: 3px;">{{ count }}</span>
+                </div>
+
+                <div v-if="gameState.reservedCards[p.id] && gameState.reservedCards[p.id].length > 0" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 5px;">
+                    <span style="font-size: 0.8em; margin-right: 5px; color: #bdc3c7;">{{ t('reserved') }}:</span>
+                    <div style="display: inline-block; vertical-align: middle;">
+                        <div v-for="(card, cIdx) in gameState.reservedCards[p.id]" :key="cIdx" 
+                             class="mini-reserved" :class="'bonus-' + card.bonus"
+                             @click="selectCard(null, cIdx, 'reserved', p.id)"
+                             :title="t('click_to_view')">
+                            <div v-if="card.points" class="points">{{ card.points }}</div>
+                        </div>
                     </div>
                 </div>
-                <div style="font-size: 0.9em; margin-top: 5px; display: flex; align-items: center; flex-wrap: wrap;">
-                    <span style="margin-right: 5px;">产出:</span>
-                    <div v-for="(count, color) in gameState.playerBonuses[p.id]" :key="color" 
-                          v-show="count > 0" class="mini-token" :class="color" style="border-radius: 3px;">
-                        {{ count }}
-                    </div>
-                </div>
-                <div style="font-size: 0.9em; margin-top: 5px; display: flex; align-items: center; flex-wrap: wrap;" v-if="gameState.reservedCards[p.id] && gameState.reservedCards[p.id].length > 0">
-                    <span style="margin-right: 5px;">预约:</span>
-                    <div v-for="(c, cIdx) in gameState.reservedCards[p.id]" :key="cIdx" 
-                         class="mini-card" :class="'bonus-' + c.bonus"
-                         @click="selectCard(null, cIdx, 'reserved', p.id)" style="cursor: pointer;">
-                        <template v-for="(sel, pid) in remoteSelections" :key="pid">
-                            <div v-if="sel && sel.source === 'reserved' && sel.index === cIdx && sel.ownerId === p.id" class="selection-overlay" style="border-width: 2px;"></div>
-                        </template>
-                        <div v-if="c.points" class="points">{{c.points}}</div>
-                    </div>
-                </div>
-                <div style="font-size: 0.9em; margin-top: 5px; display: flex; align-items: center; flex-wrap: wrap;" v-if="gameState.playerNobles[p.id] && gameState.playerNobles[p.id].length > 0">
-                    <span style="margin-right: 5px;">贵族:</span>
-                    <div v-for="(noble, nIdx) in gameState.playerNobles[p.id]" :key="nIdx" 
-                         class="mini-card" style="background: #e67e22; border-color: #d35400; cursor: default;">
-                        <div class="points">3</div>
-                    </div>
-                </div>
-                <div style="margin-top: 5px;">分数: <strong>{{ gameState.scores[p.id] || 0 }}</strong></div>
+
             </div>
         </div>
     </div>
 
-    <!-- 选中卡牌操作栏 -->
     <div v-if="selectedCard" class="action-modal">
-        <div style="text-align: center;">
-            <h4 style="margin: 0 0 10px 0;">已选择卡牌</h4>
-            <div class="splendor-card" :class="'bonus-' + selectedCard.card.bonus" style="transform: scale(0.8); margin: 0;">
-                <div class="card-points" v-if="selectedCard.card.points > 0">{{ selectedCard.card.points }}</div>
-                <div class="card-bonus" :class="selectedCard.card.bonus"></div>
-                <div style="flex-grow: 1;"></div>
-                <div class="card-costs">
-                    <div v-for="(count, color) in selectedCard.card.cost" :key="color" class="cost-item">
-                        <div class="cost-dot" :class="color"></div>
-                        <span style="font-weight:bold; font-size:14px;">{{ count }}</span>
-                    </div>
+        <div v-if="selectedCard.index === -1"><h4>{{ t('reserve_deck') }}</h4></div>
+        <div v-else class="splendor-card" :class="'bonus-' + selectedCard.card.bonus" style="transform: scale(0.8);">
+            <div class="card-points" v-if="selectedCard.card.points > 0">{{ selectedCard.card.points }}</div>
+            <div class="card-bonus" :class="selectedCard.card.bonus"></div>
+            <div style="flex-grow: 1;"></div>
+            <div class="card-costs">
+                <div v-for="(count, color) in selectedCard.card.cost" :key="color" class="cost-item">
+                    <div class="cost-dot" :class="color"></div>
+                    <span>{{ count }}</span>
                 </div>
             </div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 10px;">
             <button @click="executeBuy" 
-                v-if="isMyTurn && !gameState.gameOver && (selectedCard.source === 'board' || selectedCard.ownerId === myPeerId)">
-                购买
+                v-if="selectedCard.index !== -1 && isMyTurn && (selectedCard.source === 'board' || (selectedCard.source === 'reserved' && selectedCard.ownerId === socketId))">
+                {{ t('buy') }}
             </button>
-            <button @click="executeReserve" 
-                v-if="isMyTurn && !gameState.gameOver && selectedCard.source !== 'reserved'" 
-                :disabled="gameState.reservedCards[myPeerId].length >= 3">
-                预约
-            </button>
-            <button @click="selectedCard = null" class="secondary">关闭</button>
+            <button @click="executeReserve" v-if="isMyTurn && selectedCard.source !== 'reserved'">{{ t('reserve') }}</button>
+            <button @click="selectedCard = null" class="secondary">{{ t('close') }}</button>
         </div>
     </div>
 
-    <!-- 弃牌操作栏 -->
-    <div v-if="isDiscarding" class="action-modal" style="flex-direction: column; align-items: center;">
-        <h4>宝石超过 10 个，请弃掉 {{ discardCountNeeded }} 个</h4>
-        <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
-            <div v-for="(count, color) in tempTokensMap" :key="color" 
-                 v-show="count > 0"
-                 class="token-btn" :class="color"
-                 @click="handleDiscardClick(color)">
+    <div v-if="isDiscarding" class="action-modal" style="flex-direction: column;">
+        <h4>{{ t('discard_msg', [discardCountNeeded]) }}</h4>
+        <div style="display: flex; gap: 10px;">
+            <div v-for="(count, color) in tempTokensMap" :key="color" v-show="count > 0"
+                 class="token-btn" :class="color" @click="handleDiscardClick(color)">
                 {{ count }}
             </div>
         </div>
-        <div style="margin-top: 10px;">
-            已选弃牌: <span v-for="t in tokensToDiscard" :key="t" :class="t" style="padding: 2px 5px; margin-right: 5px; border-radius: 3px; color: black;">{{ t }}</span>
-        </div>
-        <div style="display: flex; gap: 10px; margin-top: 10px;">
-            <button @click="confirmDiscard" :disabled="tokensToDiscard.length !== discardCountNeeded">确认弃牌</button>
-            <button @click="resetDiscard" class="secondary">重选</button>
-            <button @click="cancelDiscard" class="secondary" style="background: #e74c3c;">取消操作</button>
-        </div>
+        <div>{{ t('to_discard') }}: {{ tokensToDiscard.join(', ') }}</div>
+        <button @click="confirmDiscard" :disabled="tokensToDiscard.length !== discardCountNeeded">{{ t('confirm') }}</button>
     </div>
 
     <div class="log-box" ref="logBox">
-        <div v-for="(log, i) in logs" :key="i">> {{ log }}</div>
+        <div v-for="(log, i) in logs" :key="i">> {{ tLog(log) }}</div>
     </div>
 </div>
 
 <script>
-const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
+const { createApp, ref, reactive, computed, nextTick, watch } = Vue;
+
+const TRANS = {
+    zh: {
+        lobby_title: "游戏大厅", your_name: "你的名字", enter_name: "输入名字", room_id: "房间号", enter_room: "输入房间号",
+        join_room: "加入房间", players_in_room: "房间内玩家", you: "你", cancel_ready: "取消准备", ready: "准备",
+        start_game: "开始游戏", need_more_players: "需要至少 2 人", turn: "回合", game_over: "游戏结束", your_turn: "轮到你了",
+        reset_game: "重置游戏", leaderboard: "排行榜", back_to_lobby: "返回大厅", bank: "银行", selected: "已选",
+        confirm: "确认", cancel: "重置", reserved_cards: "我的预约", reserved: "预约", me: "我", score: "分数", reserve_deck: "从牌堆预约",
+        buy: "购买", reserve: "预约", close: "关闭", discard_msg: "宝石过多！请弃掉 %s 个", to_discard: "将弃掉",
+        error_gold: "不能拿取黄金", error_max_3: "最多拿取 3 个", error_same: "不能拿两个不同色的", error_bank_low: "银行不足 4 个，无法拿 2 个",
+        click_to_view: "点击查看详情",
+
+        log_join: "%s 加入了房间",
+        log_start: "游戏开始！",
+        log_take: "%s 拿取了: %s",
+        log_buy: "%s 购买了卡牌 (+%s 分)",
+        log_reserve: "%s 预约了一张卡牌",
+        log_noble: "👑 贵族拜访了 %s",
+        log_last_round: "%s 触发了最后一轮！"
+    },
+    en: {
+        lobby_title: "Game Lobby", your_name: "Your Name", enter_name: "Name", room_id: "Room ID", enter_room: "Room ID",
+        join_room: "Join Room", players_in_room: "Players in Room", you: "You", cancel_ready: "Cancel Ready", ready: "Ready",
+        start_game: "Start Game", need_more_players: "Need 2+ players", turn: "Turn", game_over: "Game Over", your_turn: "Your Turn",
+        reset_game: "Reset Game", leaderboard: "Leaderboard", back_to_lobby: "Back to Lobby", bank: "Bank", selected: "Selected",
+        confirm: "Confirm", cancel: "Reset", reserved_cards: "Reserved", reserved: "Rsrv", me: "Me", score: "Score", reserve_deck: "Reserve from Deck",
+        buy: "Buy", reserve: "Reserve", close: "Close", discard_msg: "Too many tokens! Discard %s", to_discard: "Discarding",
+        error_gold: "Cannot take Gold", error_max_3: "Max 3 tokens", error_same: "Invalid selection", error_bank_low: "Bank has < 4, cannot take 2",
+        click_to_view: "Click to view",
+
+        log_join: "%s joined the room",
+        log_start: "Game Started!",
+        log_take: "%s took: %s",
+        log_buy: "%s bought a card (+%s pts)",
+        log_reserve: "%s reserved a card",
+        log_noble: "👑 Noble visited %s",
+        log_last_round: "%s triggered the Last Round!"
+    }
+};
 
 createApp({
     setup() {
-        // --- 基础状态 ---
-        const myPeerId = ref(null);
-        const hostIdInput = ref('');
-        const isHost = ref(true); // 默认为房主，点击加入变为客机
-        const isConnectedToHost = ref(false);
-        const gameStarted = ref(false);
-        const gameOver = ref(false);
-        const logs = ref([]);
-        const selectedTokens = ref([]);
-        const selectedCard = ref(null); // { level, index, card, source }
-        const remoteSelections = reactive({}); // { peerId: { level, index, source } }
+        const socket = io();
+        const socketId = ref('');
+        const lang = ref('zh');
         
-        // 监听本地选择变化并广播
-        Vue.watch(selectedCard, (newVal) => {
-            const payload = newVal ? { 
-                level: newVal.level, 
-                index: newVal.index, 
-                source: newVal.source,
-                ownerId: newVal.ownerId
-            } : null;
-            
-            if (isHost.value) {
-                // 房主直接广播
-                broadcastData({ type: 'PLAYER_SELECT_CARD', payload: { peerId: myPeerId.value, selection: payload } });
-            } else if (connections.length > 0) {
-                // 客机发送给房主
-                connections[0].send({ type: 'ACTION_SELECT_CARD', payload });
-            }
+        const myName = ref('Player ' + Math.floor(Math.random()*1000));
+        const roomName = ref('1');
+        const isInRoom = ref(false);
+        const gameStarted = ref(false);
+        const players = ref([]);
+        const isReady = ref(false);
+        const logs = ref([]);
+        const lastAction = ref(null);
+        const lastActionKey = ref(0);
+
+        const gameState = reactive({
+            turnIndex: 0, bank: {}, playerTokens: {}, playerBonuses: {}, reservedCards: {},
+            board: {level1:[], level2:[], level3:[]}, decks: {}, scores: {}, nobles: [], gameOver: false
         });
 
-        const actionMode = ref('buy'); // 'buy' or 'reserve' (deprecated but kept for compatibility if needed, though we are removing usage)
-        const myPlayerName = ref('玩家 ' + Math.floor(Math.random()*1000));
-        const isReady = ref(false);
+        const selectedTokens = ref([]);
+        const selectedCard = ref(null);
+        const remoteSelections = ref({});
+        const showTurnNotification = ref(false);
         
-        // 弃牌相关状态
         const isDiscarding = ref(false);
+        const discardCountNeeded = ref(0);
         const tokensToDiscard = ref([]);
         const tempTokensMap = reactive({});
-        const discardCountNeeded = ref(0);
-        const pendingReserve = ref(null); // { level, index }
+        const pendingAction = ref(null);
 
-        // 新增状态
-        const showTurnNotification = ref(false);
-        const voteActive = ref(false);
-        const restartVotes = reactive({}); // Host only
+        const t = (key, args=[]) => {
+            let str = TRANS[lang.value][key] || key;
+            if (!Array.isArray(args)) args = [args];
+            args.forEach(a => str = str.replace('%s', a));
+            return str;
+        };
+        const tLog = (logObj) => {
+            if (!logObj) return '';
+            if (typeof logObj === 'string') return logObj; 
+            return t(logObj.key, logObj.args);
+        };
+        const toggleLang = () => lang.value = (lang.value === 'zh' ? 'en' : 'zh');
 
-        // PeerJS 对象
-        let peer = null;
-        let connections = []; // 房主存所有连接，客机存房主连接
-
-        // --- 游戏数据 (需同步的核心状态) ---
-        const players = ref([]); // [{id, name, isReady}, ...]
-        const gameState = reactive({
-            turnIndex: 0,
-            bank: { red: 4, green: 4, blue: 4, white: 4, black: 4, gold: 5 },
-            playerTokens: {}, // { peerId: { red: 0... } }
-            playerBonuses: {}, // { peerId: { red: 0... } }
-            reservedCards: {}, // { peerId: [] }
-            playerNobles: {}, // { peerId: [] }
-            scores: {},
-            board: { level1: [], level2: [], level3: [] },
-            decks: { level1: [], level2: [], level3: [] },
-            nobles: [],
-            gameOver: false,
-            isLastRound: false
+        socket.on('connect', () => { socketId.value = socket.id; });
+        socket.on('PLAYER_LIST', (list) => { players.value = list; });
+        socket.on('ADD_LOG', (logObj) => { 
+            logs.value.push(logObj); 
+            lastAction.value = logObj;
+            lastActionKey.value++; 
+            nextTick(() => { const b = document.querySelector('.log-box'); if(b) b.scrollTop = b.scrollHeight; });
         });
+        socket.on('GAME_START', () => { gameStarted.value = true; });
+        socket.on('STATE_SYNC', (state) => { Object.assign(gameState, state); });
+        socket.on('SELECTION_UPDATE', (sels) => { remoteSelections.value = sels; });
+        socket.on('RESTART_GAME', () => { gameStarted.value = false; isReady.value = false; logs.value = []; lastAction.value = null; });
 
-        const isMyTurn = computed(() => {
-            if (!gameStarted.value) return false;
-            return players.value[gameState.turnIndex]?.id === myPeerId.value;
-        });
+        const isMyTurn = computed(() => gameStarted.value && players.value[gameState.turnIndex]?.id === socketId.value);
+        const currentPlayerName = computed(() => players.value[gameState.turnIndex]?.name || '');
+        const allReady = computed(() => players.value.length > 0 && players.value.every(p => p.isReady));
+        const rankedPlayers = computed(() => [...players.value].sort((a,b) => (gameState.scores[b.id]||0) - (gameState.scores[a.id]||0)));
 
-        // 监听回合变化，显示提示
-        Vue.watch(() => gameState.turnIndex, (newVal) => {
-             if (gameStarted.value && !gameState.gameOver && players.value[newVal]?.id === myPeerId.value) {
+        watch(() => gameState.turnIndex, (newVal) => {
+            if (players.value[newVal]?.id === socketId.value) {
                 showTurnNotification.value = true;
                 setTimeout(() => showTurnNotification.value = false, 2000);
             }
         });
 
-        // --- 辅助函数 ---
-        const shuffle = (array) => {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
+        const joinRoom = () => {
+            if (!roomName.value) return;
+            socket.emit('JOIN_ROOM', { room: roomName.value, name: myName.value });
+            isInRoom.value = true;
         };
 
-        // --- P2P 初始化 ---
-        onMounted(() => {
-            // 生成随机 ID (实际使用可以使用短 ID 生成逻辑)
-            peer = new Peer(null, { 
-                debug: 2,
-                config: {
-                    iceServers: [
-                        // Tencent (Very reliable in China)
-                        { urls: 'stun:stun.qq.com:3478' },
-                        // Xiaomi
-                        { urls: 'stun:stun.miwifi.com:3478' },
-                        // 3CX (International, sometimes works but slower)
-                        { urls: 'stun:stun.3cx.com:3478' }
-                    ]
-                }
-            });
-
-            peer.on('open', (id) => {
-                myPeerId.value = id;
-                addLog(`P2P 初始化完成，我的 ID: ${id}`);
-                // 默认把自己加入玩家列表
-                players.value.push({ id: id, name: myPlayerName.value, isReady: false });
-                
-                // 初始化我的状态
-                gameState.playerTokens[id] = { red:0, green:0, blue:0, white:0, black:0, gold:0 };
-                gameState.playerBonuses[id] = { red:0, green:0, blue:0, white:0, black:0 };
-                gameState.reservedCards[id] = [];
-                gameState.scores[id] = 0;
-            });
-
-            // 被动连接（当我是房主时，别人连我）
-            peer.on('connection', (conn) => {
-                if (!isHost.value) return; // 客机不接受连接
-                
-                conn.on('open', () => {
-                    addLog(`新玩家连接: ${conn.peer}`);
-                    connections.push(conn);
-                    
-                    // 监听玩家发来的数据
-                    setupDataListener(conn);
-
-                    // 把新玩家加入列表 (名字稍后同步)
-                    const newPlayer = { id: conn.peer, name: `玩家 ${conn.peer.substr(0,4)}`, isReady: false };
-                    players.value.push(newPlayer);
-                    gameState.playerTokens[conn.peer] = { red:0, green:0, blue:0, white:0, black:0, gold:0 };
-                    gameState.playerBonuses[conn.peer] = { red:0, green:0, blue:0, white:0, black:0 };
-                    gameState.reservedCards[conn.peer] = [];
-                    gameState.scores[conn.peer] = 0;
-
-                    // 广播最新的玩家列表给所有人
-                    broadcastData({ type: 'PLAYER_LIST', payload: players.value });
-                });
-            });
-        });
-
-        // --- 客户端逻辑 (加入房间) ---
-        const setRole = (role) => {
-            if (gameStarted.value) return;
-            isHost.value = role;
-            // 切换身份时重置连接和玩家列表
-            connections.forEach(c => c.close());
-            connections = [];
-            players.value = [{ id: myPeerId.value, name: myPlayerName.value, isReady: false }];
-            isConnectedToHost.value = false;
-            addLog(`身份切换为: ${role ? '房主' : '客机'}`);
-        };
-
-        const joinGame = () => {
-            if (!hostIdInput.value) return alert("请输入房主 ID");
-            isHost.value = false;
-            
-            const conn = peer.connect(hostIdInput.value);
-            conn.on('open', () => {
-                addLog(`成功连接到房主: ${hostIdInput.value}`);
-                isConnectedToHost.value = true;
-                connections.push(conn); // 客机只存一个连接（房主）
-                setupDataListener(conn);
-                // 发送我的名字
-                conn.send({ type: 'UPDATE_NAME', payload: myPlayerName.value });
-            });
-            conn.on('error', (err) => alert("连接错误: " + err));
-        };
-
-        const updateName = () => {
-            if (isHost.value) {
-                const me = players.value.find(p => p.id === myPeerId.value);
-                if (me) me.name = myPlayerName.value;
-                broadcastData({ type: 'PLAYER_LIST', payload: players.value });
-            } else if (isConnectedToHost.value) {
-                connections[0].send({ type: 'UPDATE_NAME', payload: myPlayerName.value });
-            }
-        };
-
-        const setReady = () => {
+        const toggleReady = () => {
             isReady.value = !isReady.value;
-            if (isHost.value) {
-                const me = players.value.find(p => p.id === myPeerId.value);
-                if (me) me.isReady = isReady.value;
-                broadcastData({ type: 'PLAYER_LIST', payload: players.value });
-            } else if (isConnectedToHost.value) {
-                connections[0].send({ type: 'UPDATE_READY', payload: isReady.value });
-            }
+            socket.emit('UPDATE_READY', isReady.value);
         };
-
-        const restartGame = () => {
-            if (!isHost.value) return;
-            
-            // 重置游戏状态
-            gameStarted.value = false;
-            gameState.gameOver = false;
-            gameState.isLastRound = false;
-            gameState.turnIndex = 0;
-            gameState.nobles = [];
-            gameState.board = { level1: [], level2: [], level3: [] };
-            gameState.decks = { level1: [], level2: [], level3: [] };
-            
-            // 重置玩家状态
-            players.value.forEach(p => {
-                p.isReady = false;
-                gameState.playerTokens[p.id] = { red:0, green:0, blue:0, white:0, black:0, gold:0 };
-                gameState.playerBonuses[p.id] = { red:0, green:0, blue:0, white:0, black:0 };
-                gameState.reservedCards[p.id] = [];
-                gameState.playerNobles[p.id] = [];
-                gameState.scores[p.id] = 0;
-            });
-            
-            // 本地重置
-            isReady.value = false;
-            logs.value = [];
-            addLog("房主已重置游戏，请准备");
-
-            broadcastData({ type: 'RESTART_GAME' });
-            broadcastData({ type: 'PLAYER_LIST', payload: players.value });
-            syncState();
-        };
-
-        const rankedPlayers = computed(() => {
-            // 复制一份玩家列表用于排序，保留原始索引以判断先后手
-            const list = players.value.map((p, index) => ({
-                ...p,
-                originalIndex: index,
-                score: gameState.scores[p.id] || 0,
-                cardCount: Object.values(gameState.playerBonuses[p.id] || {}).reduce((a,b)=>a+b,0)
-            }));
-
-            return list.sort((a, b) => {
-                if (b.score !== a.score) {
-                    return b.score - a.score; // 分数高在前
-                }
-                // 同分情况：后手在前 (索引大的在前)
-                return b.originalIndex - a.originalIndex;
-            });
-        });
-
-        // --- 数据通信处理中心 ---
-        const setupDataListener = (conn) => {
-            conn.on('data', (data) => {
-                handleData(data, conn.peer);
-            });
-        };
-
-        const handleData = (data, senderId) => {
-            // console.log("收到数据:", data);
-            
-            switch (data.type) {
-                // [通用] 更新玩家列表
-                case 'PLAYER_LIST':
-                    players.value = data.payload;
-                    // 如果我是客机，收到列表时也要初始化本地的空状态结构，防止报错
-                    players.value.forEach(p => {
-                        if(!gameState.playerTokens[p.id]) gameState.playerTokens[p.id] = { red:0, green:0, blue:0, white:0, black:0, gold:0 };
-                        if(!gameState.playerBonuses[p.id]) gameState.playerBonuses[p.id] = { red:0, green:0, blue:0, white:0, black:0 };
-                        if(!gameState.reservedCards[p.id]) gameState.reservedCards[p.id] = [];
-                        if(!gameState.playerNobles[p.id]) gameState.playerNobles[p.id] = [];
-                    });
-                    break;
-
-                // [通用] 游戏开始信号
-                case 'GAME_START':
-                    gameStarted.value = true;
-                    gameState.gameOver = false;
-                    addLog("游戏开始！");
-                    break;
-                
-                // [通用] 重新开始信号
-                case 'RESTART_GAME':
-                    gameStarted.value = false;
-                    gameState.gameOver = false;
-                    isReady.value = false;
-                    logs.value = [];
-                    addLog("房主已重置游戏，请准备");
-                    break;
-
-                // [通用] 状态全量同步 (最核心逻辑)
-                case 'STATE_SYNC':
-                    Object.assign(gameState, data.payload);
-                    break;
-                
-                // [通用] 广播日志
-                case 'ADD_LOG':
-                    addLog(data.payload);
-                    break;
-
-                // [通用] 投票相关
-                case 'VOTE_START':
-                    voteActive.value = true;
-                    break;
-                
-                case 'VOTE_END':
-                    voteActive.value = false;
-                    if (data.payload === false) {
-                        addLog("重开投票未通过");
-                    }
-                    break;
-
-                // [房主特有] 接收玩家的操作请求
-                case 'REQUEST_RESTART':
-                    if (!isHost.value) return;
-                    startVote();
-                    break;
-
-                case 'VOTE_ANSWER':
-                    if (!isHost.value) return;
-                    handleVote(senderId, data.payload);
-                    break;
-
-                case 'UPDATE_NAME':
-                    if (!isHost.value) return;
-                    const pName = players.value.find(p => p.id === senderId);
-                    if (pName) {
-                        pName.name = data.payload;
-                        broadcastData({ type: 'PLAYER_LIST', payload: players.value });
-                    }
-                    break;
-
-                case 'UPDATE_READY':
-                    if (!isHost.value) return;
-                    const pReady = players.value.find(p => p.id === senderId);
-                    if (pReady) {
-                        pReady.isReady = data.payload;
-                        broadcastData({ type: 'PLAYER_LIST', payload: players.value });
-                    }
-                    break;
-
-                case 'ACTION_TAKE_TOKENS':
-                    if (!isHost.value) return;
-                    processTakeTokensAction(senderId, data.payload);
-                    break;
-
-                case 'ACTION_SELECT_CARD':
-                    if (!isHost.value) return;
-                    // 房主收到客机的选择，广播给所有人
-                    broadcastData({ type: 'PLAYER_SELECT_CARD', payload: { peerId: senderId, selection: data.payload } });
-                    break;
-
-                case 'PLAYER_SELECT_CARD':
-                    // 所有人收到某人的选择更新
-                    {
-                        const { peerId, selection } = data.payload;
-                        if (peerId !== myPeerId.value) {
-                            if (selection) {
-                                remoteSelections[peerId] = selection;
-                            } else {
-                                delete remoteSelections[peerId];
-                            }
-                        }
-                    }
-                    break;
-                
-                case 'ACTION_BUY_CARD':
-                    if (!isHost.value) return;
-                    processBuyCardAction(senderId, data.payload);
-                    break;
-
-                case 'ACTION_RESERVE_CARD':
-                    if (!isHost.value) return;
-                    processReserveCardAction(senderId, data.payload);
-                    break;
-            }
-        };
-
-        // --- 游戏逻辑控制 (仅房主运行) ---
-        const startGame = () => {
-            if (!isHost.value) return;
-
-            // 0. 随机玩家顺序
-            players.value = shuffle(players.value);
-            broadcastData({ type: 'PLAYER_LIST', payload: players.value });
-
-            // 1. 初始化银行宝石数量 (根据人数)
-            const playerCount = players.value.length;
-            const tokenCount = playerCount === 2 ? 4 : (playerCount === 3 ? 5 : 7);
-            ['red', 'green', 'blue', 'white', 'black'].forEach(color => {
-                gameState.bank[color] = tokenCount;
-            });
-            gameState.bank.gold = 5;
-
-            // 2. 初始化卡组并洗牌
-            gameState.decks.level1 = shuffle([...FULL_CARD_POOL.level1]);
-            gameState.decks.level2 = shuffle([...FULL_CARD_POOL.level2]);
-            gameState.decks.level3 = shuffle([...FULL_CARD_POOL.level3]);
-            
-            // 3. 初始化面板 (每级 4 张)
-            ['level1', 'level2', 'level3'].forEach(lvl => {
-                gameState.board[lvl] = [];
-                for (let i = 0; i < 4; i++) {
-                    if (gameState.decks[lvl].length > 0) {
-                        gameState.board[lvl].push(gameState.decks[lvl].pop());
-                    }
-                }
-            });
-
-            // 4. 初始化贵族 (人数 + 1)
-            const allNobles = shuffle([...FULL_CARD_POOL.nobles]);
-            gameState.nobles = allNobles.slice(0, playerCount + 1);
-
-            // 重置其他状态
-            gameState.turnIndex = 0;
-            gameState.isLastRound = false;
-            gameState.gameOver = false;
-            players.value.forEach(p => {
-                gameState.scores[p.id] = 0;
-                gameState.playerTokens[p.id] = { red:0, green:0, blue:0, white:0, black:0, gold:0 };
-                gameState.playerBonuses[p.id] = { red:0, green:0, blue:0, white:0, black:0 };
-                gameState.reservedCards[p.id] = [];
-                gameState.playerNobles[p.id] = [];
-            });
-
-            gameStarted.value = true;
-            broadcastData({ type: 'GAME_START' });
-            syncState();
-            broadcastLog("游戏已由房主启动，顺序已随机");
-        };
-
-        const processTakeTokensAction = (playerId, payload) => {
-            const currentPlayer = players.value[gameState.turnIndex];
-            if (currentPlayer.id !== playerId) return;
-
-            // 兼容旧格式 (只传了数组的情况，虽然现在前端改了，但为了稳健)
-            let take = [], discard = [];
-            if (Array.isArray(payload)) {
-                take = payload;
-            } else {
-                take = payload.take || [];
-                discard = payload.return || payload.discard || [];
-            }
-
-            // 验证逻辑
-            for (const color of take) {
-                if (gameState.bank[color] <= 0) return;
-            }
-            if (take.length === 2 && take[0] === take[1]) {
-                if (gameState.bank[take[0]] < 4) return;
-            }
-
-            // 执行拿取
-            take.forEach(color => {
-                gameState.bank[color]--;
-                gameState.playerTokens[playerId][color]++;
-            });
-
-            // 执行弃牌
-            discard.forEach(color => {
-                gameState.bank[color]++;
-                gameState.playerTokens[playerId][color]--;
-            });
-
-            let logMsg = `${currentPlayer.name} 拿走了宝石: ${take.join(', ')}`;
-            if (discard.length > 0) {
-                logMsg += `，并归还了: ${discard.join(', ')}`;
-            }
-            broadcastLog(logMsg);
-            nextTurn();
-        };
-
-        const processBuyCardAction = (playerId, { level, index, source }) => {
-            const currentPlayer = players.value[gameState.turnIndex];
-            if (currentPlayer.id !== playerId) return;
-
-            let card;
-            if (source === 'reserved') {
-                card = gameState.reservedCards[playerId][index];
-            } else {
-                card = gameState.board[level][index];
-            }
-            
-            if (!card) return;
-
-            const playerTokens = gameState.playerTokens[playerId];
-            const playerBonuses = gameState.playerBonuses[playerId];
-            let goldNeeded = 0;
-            const toReturn = {};
-
-            for (const color in card.cost) {
-                const cost = card.cost[color];
-                const bonus = playerBonuses[color] || 0;
-                const actualCost = Math.max(0, cost - bonus);
-                
-                if (playerTokens[color] < actualCost) {
-                    goldNeeded += (actualCost - playerTokens[color]);
-                    toReturn[color] = playerTokens[color];
-                } else {
-                    toReturn[color] = actualCost;
-                }
-            }
-
-            if (playerTokens.gold < goldNeeded) {
-                addLog("宝石不足，无法购买");
-                return;
-            }
-
-            for (const color in toReturn) {
-                playerTokens[color] -= toReturn[color];
-                gameState.bank[color] += toReturn[color];
-            }
-            playerTokens.gold -= goldNeeded;
-            gameState.bank.gold += goldNeeded;
-
-            playerBonuses[card.bonus]++;
-            gameState.scores[playerId] += card.points;
-
-            broadcastLog(`${currentPlayer.name} 购买了 ${source === 'reserved' ? '预约的' : level} 卡牌，获得 ${card.points} 分`);
-
-            if (source === 'reserved') {
-                gameState.reservedCards[playerId].splice(index, 1);
-            } else {
-                if (gameState.decks[level].length > 0) {
-                    gameState.board[level][index] = gameState.decks[level].pop();
-                } else {
-                    gameState.board[level].splice(index, 1);
-                }
-            }
-
-            checkNobles(playerId);
-
-            if (gameState.scores[playerId] >= 15) {
-                broadcastLog(`🎉 ${currentPlayer.name} 达到了 15 分！本轮结束后游戏将结束。`);
-                gameState.isLastRound = true;
-            }
-
-            nextTurn();
-        };
-
-        const processReserveCardAction = (playerId, { level, index, discard }) => {
-            const currentPlayer = players.value[gameState.turnIndex];
-            if (currentPlayer.id !== playerId) return;
-
-            if (gameState.reservedCards[playerId].length >= 3) {
-                addLog("预约卡牌已达上限 (3张)");
-                return;
-            }
-
-            let card;
-            if (index === -1) {
-                // 从牌堆顶预约
-                if (gameState.decks[level].length > 0) {
-                    card = gameState.decks[level].pop();
-                }
-            } else {
-                // 从面板预约
-                card = gameState.board[level][index];
-                if (card) {
-                    if (gameState.decks[level].length > 0) {
-                        gameState.board[level][index] = gameState.decks[level].pop();
-                    } else {
-                        gameState.board[level].splice(index, 1);
-                    }
-                }
-            }
-
-            if (!card) return;
-
-            gameState.reservedCards[playerId].push(card);
-            
-            // 获得金币
-            if (gameState.bank.gold > 0) {
-                gameState.bank.gold--;
-                gameState.playerTokens[playerId].gold++;
-                broadcastLog(`${currentPlayer.name} 预约了卡牌并获得 1 金币`);
-            } else {
-                broadcastLog(`${currentPlayer.name} 预约了卡牌 (银行无金币)`);
-            }
-
-            // 处理弃牌
-            if (discard && discard.length > 0) {
-                 discard.forEach(color => {
-                     gameState.playerTokens[playerId][color]--;
-                     gameState.bank[color]++;
-                 });
-                 broadcastLog(`${currentPlayer.name} 归还了: ${discard.join(', ')}`);
-            }
-
-            nextTurn();
-        };
-
-        const checkNobles = (playerId) => {
-            const playerBonuses = gameState.playerBonuses[playerId];
-            for (let i = gameState.nobles.length - 1; i >= 0; i--) {
-                const noble = gameState.nobles[i];
-                let satisfy = true;
-                for (const color in noble.cost) {
-                    if ((playerBonuses[color] || 0) < noble.cost[color]) {
-                        satisfy = false;
-                        break;
-                    }
-                }
-                if (satisfy) {
-                    gameState.scores[playerId] += 3;
-                    if (!gameState.playerNobles[playerId]) gameState.playerNobles[playerId] = [];
-                    gameState.playerNobles[playerId].push(noble);
-                    broadcastLog(`👑 贵族拜访了 ${players.value.find(p => p.id === playerId).name}`);
-                    gameState.nobles.splice(i, 1);
-                    break; 
-                }
-            }
-        };
-
-        const nextTurn = () => {
-            gameState.turnIndex = (gameState.turnIndex + 1) % players.value.length;
-            
-            if (gameState.turnIndex === 0 && gameState.isLastRound) {
-                gameState.gameOver = true;
-                const winner = rankedPlayers.value[0];
-                broadcastLog(`🎊 游戏结束！获胜者是: ${winner.name} (${winner.score}分)`);
-            }
-            
-            syncState();
-        };
-
-        // --- 辅助函数 ---
-        const broadcastData = (data) => {
-            connections.forEach(conn => conn.send(data));
-        };
-
-        const broadcastLog = (msg) => {
-             addLog(msg);
-             broadcastData({ type: 'ADD_LOG', payload: msg });
-        };
-
-        const syncState = () => {
-            // 只有房主可以发起状态同步
-            if (!isHost.value) return;
-            // 广播给所有人（除了自己）
-            broadcastData({ type: 'STATE_SYNC', payload: gameState });
-        };
-
-        const requestRestart = () => {
-             if (isHost.value) {
-                 startVote();
-             } else {
-                 connections[0].send({ type: 'REQUEST_RESTART' });
-             }
-        };
-
-        const startVote = () => {
-             // Host starts vote
-             Object.keys(restartVotes).forEach(k => delete restartVotes[k]);
-             broadcastData({ type: 'VOTE_START' });
-             voteActive.value = true; // Host also votes
-        };
-
-        const submitVote = (agree) => {
-             voteActive.value = false;
-             if (isHost.value) {
-                 handleVote(myPeerId.value, agree);
-             } else {
-                 connections[0].send({ type: 'VOTE_ANSWER', payload: agree });
-             }
-        };
-        
-        const handleVote = (peerId, agree) => {
-             restartVotes[peerId] = agree;
-             // Check if all voted
-             if (Object.keys(restartVotes).length === players.value.length) {
-                 const allAgree = Object.values(restartVotes).every(v => v);
-                 if (allAgree) {
-                     restartGame();
-                     broadcastData({ type: 'VOTE_END', payload: true });
-                 } else {
-                     broadcastLog("重开投票未通过");
-                     broadcastData({ type: 'VOTE_END', payload: false });
-                 }
-             }
-        };
-
-        // --- 玩家操作入口 ---
-        const selectCard = (level, index, source, ownerId = null) => {
-            // 允许随时查看卡牌详情，不限制回合
-            
-            let card;
-            if (source === 'reserved') {
-                const targetId = ownerId || myPeerId.value;
-                if (gameState.reservedCards[targetId]) {
-                    card = gameState.reservedCards[targetId][index];
-                }
-            } else {
-                card = gameState.board[level][index];
-            }
-            
-            if (card) {
-                selectedCard.value = { level, index, card, source, ownerId: ownerId || myPeerId.value };
-            }
-        };
-
-        const executeBuy = () => {
-            if (!selectedCard.value) return;
-            const { level, index, source } = selectedCard.value;
-            
-            if (isHost.value) {
-                processBuyCardAction(myPeerId.value, { level, index, source });
-            } else {
-                connections[0].send({ type: 'ACTION_BUY_CARD', payload: { level, index, source } });
-            }
-            selectedCard.value = null;
-        };
-
-        const submitReserve = (level, index, discard) => {
-             if (isHost.value) {
-                processReserveCardAction(myPeerId.value, { level, index, discard });
-            } else {
-                connections[0].send({ type: 'ACTION_RESERVE_CARD', payload: { level, index, discard } });
-            }
-        };
-
-        const executeReserve = () => {
-            if (!selectedCard.value) return;
-            const { level, index } = selectedCard.value;
-            
-            // 检查筹码上限
-            const currentTotal = Object.values(gameState.playerTokens[myPeerId.value]).reduce((a, b) => a + b, 0);
-            const willGetGold = gameState.bank.gold > 0;
-            const newTotal = currentTotal + (willGetGold ? 1 : 0);
-
-            if (newTotal > 10) {
-                 isDiscarding.value = true;
-                 discardCountNeeded.value = newTotal - 10;
-                 tokensToDiscard.value = [];
-                 pendingReserve.value = { level, index };
-
-                 const current = { ...gameState.playerTokens[myPeerId.value] };
-                 if (willGetGold) {
-                     current.gold = (current.gold || 0) + 1;
-                 }
-                 for (const key in tempTokensMap) delete tempTokensMap[key];
-                 Object.assign(tempTokensMap, current);
-                 
-                 selectedCard.value = null; 
-                 return;
-            }
-
-            submitReserve(level, index, []);
-            selectedCard.value = null;
-        };
+        const startGame = () => socket.emit('REQUEST_START');
+        const requestRestart = () => socket.emit('REQUEST_RESTART');
 
         const selectToken = (color) => {
-            if (!isMyTurn.value || gameState.gameOver) return;
-            if (color === 'gold') return; 
+            if (!isMyTurn.value || color === 'gold') return; 
             
-            if (selectedTokens.value.includes(color)) {
-                if (selectedTokens.value.length === 1 && selectedTokens.value[0] === color) {
-                    // 规则：当该颜色的宝石指示物至少有4个时，才能取走2个同色宝石指示物
-                    if (gameState.bank[color] >= 4) {
-                        selectedTokens.value.push(color);
-                    } else {
-                        alert("银行该色宝石不足 4 个，无法拿取两个");
-                    }
-                } else {
-                    const idx = selectedTokens.value.indexOf(color);
-                    selectedTokens.value.splice(idx, 1);
-                }
+            const currentCount = selectedTokens.value.length;
+            const sameColorCount = selectedTokens.value.filter(c => c === color).length;
+
+            if (sameColorCount === 1) {
+                if (currentCount > 1) { alert(t('error_same')); return; }
+                if (gameState.bank[color] < 4) { alert(t('error_bank_low')); return; }
+                selectedTokens.value.push(color);
+            } else if (sameColorCount === 2) {
+                return; 
             } else {
-                if (selectedTokens.value.length >= 3) return;
-                if (selectedTokens.value.length === 2 && selectedTokens.value[0] === selectedTokens.value[1]) return;
+                if (selectedTokens.value.length >= 1 && selectedTokens.value[0] === selectedTokens.value[1]) {
+                    alert(t('error_max_3')); return; 
+                }
+                if (currentCount >= 3) { alert(t('error_max_3')); return; }
                 selectedTokens.value.push(color);
             }
         };
@@ -1184,34 +527,72 @@ createApp({
         const confirmTakeTokens = () => {
             if (selectedTokens.value.length === 0) return;
             
-            const currentTotal = Object.values(gameState.playerTokens[myPeerId.value]).reduce((a, b) => a + b, 0);
-            const newTotal = currentTotal + selectedTokens.value.length;
+            const currentTotal = Object.values(gameState.playerTokens[socketId.value]).reduce((a,b)=>a+b,0);
+            const final = currentTotal + selectedTokens.value.length;
             
-            if (newTotal > 10) {
-                // 进入弃牌模式
+            if (final > 10) {
                 isDiscarding.value = true;
-                discardCountNeeded.value = newTotal - 10;
+                discardCountNeeded.value = final - 10;
                 tokensToDiscard.value = [];
-                
-                // 构建临时持有的宝石状态 (当前 + 想要拿的)
-                const current = { ...gameState.playerTokens[myPeerId.value] };
-                selectedTokens.value.forEach(c => current[c] = (current[c] || 0) + 1);
-                Object.assign(tempTokensMap, current);
-                
-                return;
+                Object.assign(tempTokensMap, gameState.playerTokens[socketId.value]);
+                selectedTokens.value.forEach(c => tempTokensMap[c] = (tempTokensMap[c]||0) + 1);
+                pendingAction.value = { type: 'take', payload: { take: [...selectedTokens.value] } };
+            } else {
+                socket.emit('ACTION_TAKE_TOKENS', { take: selectedTokens.value, discard: [] });
+                selectedTokens.value = [];
             }
-
-            submitTakeTokens(selectedTokens.value, []);
         };
 
-        const submitTakeTokens = (take, discard) => {
-            if (isHost.value) {
-                processTakeTokensAction(myPeerId.value, { take, discard });
-            } else {
-                connections[0].send({ type: 'ACTION_TAKE_TOKENS', payload: { take, discard } });
+        // 修改：增加 ownerId 参数
+        const selectCard = (level, index, source, ownerId = null) => {
+            let card = null;
+            let targetId = ownerId || socketId.value; // 如果没传 ownerId，默认当做自己的（用于 My Reserved 区域）
+
+            if (source === 'reserved') {
+                // 获取指定玩家的预约卡
+                if (gameState.reservedCards[targetId]) {
+                    card = gameState.reservedCards[targetId][index];
+                }
+            } else if (source === 'board') {
+                card = gameState.board[level][index];
             }
-            selectedTokens.value = [];
-            isDiscarding.value = false;
+            
+            // 将 ownerId 存入 selectedCard 供弹窗判断
+            selectedCard.value = { level, index, source, card, ownerId: targetId };
+            
+            // 只有点面板上的卡才广播高亮，点别人的预约卡不广播（或者广播但也无所谓，简单起见只处理 board）
+            if (source === 'board') {
+                socket.emit('ACTION_SELECT_CARD', { level, index, source });
+            }
+        };
+
+        const selectDeck = (level) => {
+            selectedCard.value = { level, index: -1, source: 'deck', card: { bonus: 'white', cost: {}, points: '?' } };
+        };
+        watch(selectedCard, (val) => { if (!val) socket.emit('ACTION_SELECT_CARD', null); });
+
+        const executeBuy = () => {
+            socket.emit('ACTION_BUY_CARD', selectedCard.value);
+            selectedCard.value = null;
+        };
+
+        const executeReserve = () => {
+            const currentTotal = Object.values(gameState.playerTokens[socketId.value]).reduce((a,b)=>a+b,0);
+            const willGetGold = gameState.bank.gold > 0;
+            const final = currentTotal + (willGetGold ? 1 : 0);
+            
+            if (final > 10) {
+                isDiscarding.value = true;
+                discardCountNeeded.value = final - 10;
+                tokensToDiscard.value = [];
+                Object.assign(tempTokensMap, gameState.playerTokens[socketId.value]);
+                if (willGetGold) tempTokensMap['gold'] = (tempTokensMap['gold']||0) + 1;
+                pendingAction.value = { type: 'reserve', payload: { ...selectedCard.value } };
+                selectedCard.value = null;
+            } else {
+                socket.emit('ACTION_RESERVE_CARD', { ...selectedCard.value, discard: [] });
+                selectedCard.value = null;
+            }
         };
 
         const handleDiscardClick = (color) => {
@@ -1221,93 +602,28 @@ createApp({
             }
         };
 
-        const resetDiscard = () => {
-            tokensToDiscard.value = [];
-            // 重置临时状态
-            const current = { ...gameState.playerTokens[myPeerId.value] };
-            
-            if (pendingReserve.value) {
-                 if (gameState.bank.gold > 0) {
-                     current.gold = (current.gold || 0) + 1;
-                 }
-            } else {
-                selectedTokens.value.forEach(c => current[c] = (current[c] || 0) + 1);
-            }
-            
-            for (const key in tempTokensMap) delete tempTokensMap[key];
-            Object.assign(tempTokensMap, current);
-        };
-
-        const cancelDiscard = () => {
-            isDiscarding.value = false;
-            tokensToDiscard.value = [];
-            pendingReserve.value = null;
-            selectedTokens.value = [];
-        };
-
         const confirmDiscard = () => {
             if (tokensToDiscard.value.length !== discardCountNeeded.value) return;
-            
-            if (pendingReserve.value) {
-                submitReserve(pendingReserve.value.level, pendingReserve.value.index, tokensToDiscard.value);
-                pendingReserve.value = null;
-                isDiscarding.value = false;
-                tokensToDiscard.value = [];
+            const action = pendingAction.value;
+            if (action.type === 'take') {
+                socket.emit('ACTION_TAKE_TOKENS', { take: action.payload.take, discard: tokensToDiscard.value });
             } else {
-                submitTakeTokens(selectedTokens.value, tokensToDiscard.value);
+                socket.emit('ACTION_RESERVE_CARD', { ...action.payload, discard: tokensToDiscard.value });
             }
-        };
-
-        // 旧的 buyCard 函数已废弃，逻辑拆分到 selectCard, executeBuy, executeReserve 中
-
-        const reserveFromDeck = (level) => {
-            if (!isMyTurn.value || gameState.gameOver || actionMode.value !== 'reserve') return;
-            
-            // 检查筹码上限
-            const currentTotal = Object.values(gameState.playerTokens[myPeerId.value]).reduce((a, b) => a + b, 0);
-            const willGetGold = gameState.bank.gold > 0;
-            const newTotal = currentTotal + (willGetGold ? 1 : 0);
-
-            if (newTotal > 10) {
-                 isDiscarding.value = true;
-                 discardCountNeeded.value = newTotal - 10;
-                 tokensToDiscard.value = [];
-                 pendingReserve.value = { level, index: -1 };
-
-                 const current = { ...gameState.playerTokens[myPeerId.value] };
-                 if (willGetGold) {
-                     current.gold = (current.gold || 0) + 1;
-                 }
-                 for (const key in tempTokensMap) delete tempTokensMap[key];
-                 Object.assign(tempTokensMap, current);
-                 return;
-            }
-            
-            submitReserve(level, -1, []);
-        };
-
-        const currentPlayerName = computed(() => {
-            if (players.value.length === 0) return '';
-            return players.value[gameState.turnIndex]?.name;
-        });
-
-        const addLog = (msg) => {
-            logs.value.push(msg);
-            nextTick(() => {
-                const box = document.querySelector('.log-box');
-                if(box) box.scrollTop = box.scrollHeight;
-            });
+            isDiscarding.value = false;
+            selectedTokens.value = [];
+            pendingAction.value = null;
         };
 
         return {
-            myPeerId, hostIdInput, isHost, isConnectedToHost, gameStarted,
-            players, gameState, logs, isMyTurn, selectedTokens, actionMode,
-            joinGame, startGame, selectToken, confirmTakeTokens, currentPlayerName,
-            setRole, reserveFromDeck,
-            myPlayerName, isReady, updateName, setReady, restartGame, rankedPlayers,
-            selectedCard, remoteSelections, selectCard, executeBuy, executeReserve,
-            isDiscarding, discardCountNeeded, tempTokensMap, tokensToDiscard, handleDiscardClick, resetDiscard, confirmDiscard, cancelDiscard,
-            showTurnNotification, voteActive, requestRestart, submitVote
+            socketId, lang, t, tLog, toggleLang,
+            myName, roomName, isInRoom, joinRoom, toggleReady, players, isReady,
+            gameStarted, startGame, requestRestart, logs,
+            gameState, isMyTurn, currentPlayerName, allReady, rankedPlayers, showTurnNotification,
+            selectToken, selectedTokens, confirmTakeTokens,
+            selectedCard, selectCard, selectDeck, remoteSelections, executeBuy, executeReserve,
+            isDiscarding, discardCountNeeded, tempTokensMap, tokensToDiscard, handleDiscardClick, confirmDiscard,
+            lastAction, lastActionKey
         };
     }
 }).mount('#app');
