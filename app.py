@@ -11,19 +11,17 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 root_dir = os.path.dirname(os.path.abspath(__file__))
 
 # --- Global Storage ---
-games = {} # { "room_id": GameEngineInstance }
-player_map = {} # { "socket_id": "room_id" }
+games = {} 
+player_map = {} 
 
 class GameEngine:
     def __init__(self, room_id):
         self.room_id = room_id
-        # players: [{id, uid, name, isReady}]
         self.players = [] 
         self.game_started = False
         
-        # Voting state
         self.vote_active = False
-        self.restart_votes = {} # { uid: bool }
+        self.restart_votes = {} 
 
         self.state = {
             "turnIndex": 0,
@@ -45,11 +43,6 @@ class GameEngine:
         for p in self.players:
             if p.get('uid') == uid: return p
         return None
-
-    def update_socket_id(self, uid, new_sid):
-        p = self.get_player(uid)
-        if p:
-            p['id'] = new_sid
 
     def add_player(self, sid, uid, name):
         existing = self.get_player(uid)
@@ -78,6 +71,7 @@ class GameEngine:
         if len(self.players) < 2:
             return False
         
+        # 1. 随机顺序
         random.shuffle(self.players)
         
         player_count = len(self.players)
@@ -234,6 +228,8 @@ def handle_start():
     if not game: return
     if game.start_game():
         emit('GAME_START', to=game.room_id)
+        # 修复点 1：必须在打乱顺序后再次广播玩家列表，否则前端顺序与后端不一致
+        emit('PLAYER_LIST', game.players, to=game.room_id) 
         emit('STATE_SYNC', game.state, to=game.room_id)
         emit('ADD_LOG', {'key': 'log_start', 'args': []}, to=game.room_id)
         broadcast_room_list()
@@ -314,7 +310,9 @@ def handle_take(payload):
         game.state['playerTokens'][current_uid][c] -= 1
 
     p_name = game.get_player_name(current_uid)
-    emit('ADD_LOG', {'key': 'log_take', 'args': [p_name, ','.join(take)]}, to=game.room_id)
+    
+    # 修复点 3: 日志传递原始数组，而非字符串
+    emit('ADD_LOG', {'key': 'log_take', 'args': [p_name, take]}, to=game.room_id)
     
     game.next_turn()
     emit('STATE_SYNC', game.state, to=game.room_id)
@@ -377,7 +375,8 @@ def handle_buy(payload):
             game.state['board'][level].pop(index)
 
     p_name = game.get_player_name(current_uid)
-    emit('ADD_LOG', {'key': 'log_buy', 'args': [p_name, card['points']]}, to=game.room_id)
+    # 修复点 3: 日志传递卡牌对象
+    emit('ADD_LOG', {'key': 'log_buy', 'args': [p_name, card]}, to=game.room_id)
     
     game.check_nobles(current_uid)
 
@@ -388,19 +387,60 @@ def handle_buy(payload):
     game.next_turn()
     emit('STATE_SYNC', game.state, to=game.room_id)
 
+# @socketio.on('ACTION_RESERVE_CARD')
+# def handle_reserve(payload):
+#     game = get_game_by_sid(request.sid)
+#     if not game or not game.game_started: return
+
+#     current_uid = game.players[game.state['turnIndex']]['uid']
+#     request_uid = get_uid_by_sid(request.sid)
+#     if request_uid != current_uid: return
+
+#     if len(game.state['reservedCards'][current_uid]) >= 3:
+#         return
+
+#     level = payload['level']
+#     index = payload['index']
+#     discard = payload.get('discard', [])
+
+#     card = None
+#     if index == -1:
+#         if game.state['decks'][level]:
+#             card = game.state['decks'][level].pop()
+#     else:
+#         card = game.state['board'][level][index]
+#         if game.state['decks'][level]:
+#             game.state['board'][level][index] = game.state['decks'][level].pop()
+#         else:
+#             game.state['board'][level].pop(index)
+    
+#     if card:
+#         game.state['reservedCards'][current_uid].append(card)
+#         if game.state['bank']['gold'] > 0:
+#             game.state['bank']['gold'] -= 1
+#             game.state['playerTokens'][current_uid]['gold'] += 1
+    
+#     for c in discard:
+#         game.state['playerTokens'][current_uid][c] -= 1
+#         game.state['bank'][c] += 1
+
+#     p_name = game.get_player_name(current_uid)
+#     emit('ADD_LOG', {'key': 'log_reserve', 'args': [p_name]}, to=game.room_id)
+    
+#     game.next_turn()
+#     emit('STATE_SYNC', game.state, to=game.room_id)
+    
 @socketio.on('ACTION_RESERVE_CARD')
 def handle_reserve(payload):
     game = get_game_by_sid(request.sid)
     if not game or not game.game_started: return
 
     current_uid = game.players[game.state['turnIndex']]['uid']
-    request_uid = get_uid_by_sid(request.sid)
-    if request_uid != current_uid: return
-
-    # --- 新增：限制预约上限为 3 ---
-    if len(game.state['reservedCards'][current_uid]) >= 3:
+    if get_uid_by_sid(request.sid) != current_uid:
         return
-    # ---------------------------
+
+    if len(game.state['reservedCards'][current_uid]) >= 3: 
+        return
 
     level = payload['level']
     index = payload['index']
@@ -428,8 +468,8 @@ def handle_reserve(payload):
         game.state['bank'][c] += 1
 
     p_name = game.get_player_name(current_uid)
-    emit('ADD_LOG', {'key': 'log_reserve', 'args': [p_name]}, to=game.room_id)
-    
+    # 修改处：现在 args[1] 是 card 对象，供前端显示迷你卡牌
+    emit('ADD_LOG', {'key': 'log_reserve', 'args': [p_name, card]}, to=game.room_id)
     game.next_turn()
     emit('STATE_SYNC', game.state, to=game.room_id)
 

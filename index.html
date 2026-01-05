@@ -31,7 +31,11 @@
         .white { background: #ecf0f1; } .black { background: #2c3e50; color: white; border-color: #7f8c8d; }
         .gold { background: #f1c40f; }
 
-        .log-box { background: #000; height: 150px; overflow-y: scroll; padding: 10px; font-family: monospace; font-size: 12px; margin-top: 20px; }
+        /* Log Styles */
+        .log-box { background: #000; height: 180px; overflow-y: scroll; padding: 10px; font-family: 'Segoe UI', sans-serif; font-size: 13px; margin-top: 20px; }
+        .log-item { margin-bottom: 6px; display: flex; align-items: center; flex-wrap: wrap; line-height: 1.5; border-bottom: 1px solid #333; padding-bottom: 4px; }
+        .log-name { font-weight: bold; color: #f1c40f; margin-right: 5px; }
+
         .player-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
         .player-card { border: 2px solid transparent; padding: 10px; background: #455a64; position: relative; }
         .active-turn { border-color: #f1c40f; box-shadow: 0 0 10px #f1c40f; }
@@ -96,10 +100,10 @@
 
         .mini-reserved {
             width: 20px; height: 28px; border: 1px solid #95a5a6; border-radius: 3px;
-            display: inline-block; margin-right: 3px; position: relative; cursor: pointer;
-            background-color: #ecf0f1; transition: transform 0.1s;
+            display: inline-block; margin: 0 3px; position: relative; cursor: pointer;
+            background-color: #ecf0f1; transition: transform 0.1s; vertical-align: middle;
         }
-        .mini-reserved:hover { transform: scale(1.2); z-index: 10; border-color: white; }
+        .mini-reserved:hover { transform: scale(2); z-index: 100; border-color: white; box-shadow: 0 0 5px black;}
         .mini-reserved.bonus-red { background: #e74c3c; }
         .mini-reserved.bonus-green { background: #2ecc71; }
         .mini-reserved.bonus-blue { background: #3498db; }
@@ -314,7 +318,21 @@
 
         <div v-if="lastAction" class="last-action-bar" :key="lastActionKey">
             <span class="action-icon">📢</span>
-            <span>{{ tLog(lastAction) }}</span>
+            <span class="log-name">{{ lastAction.args[0] }}</span>
+            <span>{{ formatLogAction(lastAction) }}</span>
+            
+            <span v-if="lastAction.key === 'log_take'" style="margin-left: 5px;">
+                <span v-for="c in lastAction.args[1]" :key="c" class="mini-token" :class="c"></span>
+            </span>
+
+            <span v-if="(lastAction.key === 'log_buy' || lastAction.key === 'log_reserve') && lastAction.args[1]" style="margin-left: 5px;">
+                <div class="mini-reserved" 
+                     :class="'bonus-' + lastAction.args[1].bonus" 
+                     @click="viewLogCard(lastAction.args[1])"
+                     :title="t('click_to_view')">
+                    <div v-if="lastAction.args[1].points" class="points">{{ lastAction.args[1].points }}</div>
+                </div>
+            </span>
         </div>
 
         <div class="player-list">
@@ -353,7 +371,7 @@
     </div>
 
     <div v-if="selectedCard" class="action-modal">
-        <div v-if="selectedCard.index === -1"><h4>{{ t('reserve_deck') }}</h4></div>
+        <div v-if="selectedCard.source === 'deck'"><h4>{{ t('reserve_deck') }}</h4></div>
         <div v-else class="splendor-card" :class="'bonus-' + selectedCard.card.bonus" style="transform: scale(0.8);">
             <div class="card-points" v-if="selectedCard.card.points > 0">{{ selectedCard.card.points }}</div>
             <div class="card-bonus" :class="selectedCard.card.bonus"></div>
@@ -370,7 +388,7 @@
                 v-if="selectedCard.index !== -1 && isMyTurn && (selectedCard.source === 'board' || (selectedCard.source === 'reserved' && selectedCard.ownerId === myUid))">
                 {{ t('buy') }}
             </button>
-            <button @click="executeReserve" v-if="isMyTurn && selectedCard.source !== 'reserved'">{{ t('reserve') }}</button>
+            <button @click="executeReserve" v-if="isMyTurn && selectedCard.source !== 'reserved' && selectedCard.source !== 'log'">{{ t('reserve') }}</button>
             <button @click="selectedCard = null" class="secondary">{{ t('close') }}</button>
         </div>
     </div>
@@ -397,7 +415,23 @@
     </div>
 
     <div class="log-box" ref="logBox">
-        <div v-for="(log, i) in logs" :key="i">> {{ tLog(log) }}</div>
+        <div v-for="(log, i) in logs" :key="i" class="log-item">
+            <span class="log-name">{{ log.args[0] }}</span> 
+            <span>{{ formatLogAction(log) }}</span>
+            
+            <span v-if="log.key === 'log_take'" style="margin-left: 5px;">
+                <span v-for="c in log.args[1]" :key="c" class="mini-token" :class="c"></span>
+            </span>
+
+            <span v-if="(log.key === 'log_buy' || log.key === 'log_reserve') && log.args[1]" style="margin-left: 5px;">
+                <div class="mini-reserved" 
+                     :class="'bonus-' + log.args[1].bonus" 
+                     @click="viewLogCard(log.args[1])"
+                     :title="t('click_to_view')">
+                    <div v-if="log.args[1].points" class="points">{{ log.args[1].points }}</div>
+                </div>
+            </span>
+        </div>
     </div>
 </div>
 
@@ -417,10 +451,10 @@ const TRANS = {
         vote_title: "%s 请求重置游戏", vote_desc: "所有玩家同意后游戏将重新开始", agree: "同意", decline: "拒绝",
         error_funds: "资金不足！还需要 %s 个黄金", error_max_reserve: "预约卡牌已达上限 (3张)",
 
-        log_join: "%s 加入了房间", log_reconnect: "%s 重新连接了", log_start: "游戏开始！初始顺序已随机",
-        log_take: "%s 拿取了: %s", log_buy: "%s 购买了卡牌 (+%s 分)",
-        log_reserve: "%s 预约了一张卡牌", log_noble: "👑 贵族拜访了 %s",
-        log_last_round: "%s 触发了最后一轮！", log_vote_fail: "重置投票未通过"
+        log_join: "加入了房间", log_reconnect: "重新连接了", log_start: "游戏开始！初始顺序已随机",
+        log_take: "拿取了:", log_buy: "购买了:",
+        log_reserve: "预约了:", log_noble: "👑 贵族拜访了",
+        log_last_round: "触发了最后一轮！", log_vote_fail: "重置投票未通过"
     },
     en: {
         lobby_title: "Game Lobby", your_name: "Your Name", enter_name: "Name", room_id: "Room ID", enter_room: "Room ID",
@@ -434,10 +468,10 @@ const TRANS = {
         vote_title: "%s requested reset", vote_desc: "Game will restart if all agree", agree: "Agree", decline: "Decline",
         error_funds: "Insufficient funds! Need %s more gold", error_max_reserve: "Max reserved cards reached (3)",
 
-        log_join: "%s joined the room", log_reconnect: "%s reconnected", log_start: "Game Started! Order randomized",
-        log_take: "%s took: %s", log_buy: "%s bought a card (+%s pts)",
-        log_reserve: "%s reserved a card", log_noble: "👑 Noble visited %s",
-        log_last_round: "%s triggered the Last Round!", log_vote_fail: "Reset vote failed"
+        log_join: "joined the room", log_reconnect: "reconnected", log_start: "Game Started! Order randomized",
+        log_take: "took:", log_buy: "bought:",
+        log_reserve: "reserved:", log_noble: "👑 Noble visited",
+        log_last_round: "triggered the Last Round!", log_vote_fail: "Reset vote failed"
     }
 };
 
@@ -496,7 +530,6 @@ createApp({
             const storedRoom = localStorage.getItem('splendor_room');
             if (storedName) myName.value = storedName;
             
-            // Auto-join
             if (storedRoom && storedName) {
                 roomName.value = storedRoom;
                 joinRoom();
@@ -514,6 +547,19 @@ createApp({
             if (typeof logObj === 'string') return logObj; 
             return t(logObj.key, logObj.args);
         };
+        const formatLogAction = (logObj) => {
+            return t(logObj.key);
+        }
+        const viewLogCard = (card) => {
+            selectedCard.value = { 
+                level: 'log', 
+                index: 999, // Use a dummy index to avoid conflict with deck logic
+                source: 'log', 
+                card: card,
+                ownerId: null 
+            };
+        };
+
         const toggleLang = () => lang.value = (lang.value === 'zh' ? 'en' : 'zh');
 
         socket.on('connect', () => { socketId.value = socket.id; });
@@ -577,6 +623,8 @@ createApp({
 
         const selectToken = (color) => {
             if (!isMyTurn.value || color === 'gold') return; 
+            if (gameState.bank[color] <= 0) return; // Fix Issue 2
+
             const currentCount = selectedTokens.value.length;
             const sameColorCount = selectedTokens.value.filter(c => c === color).length;
 
@@ -685,7 +733,7 @@ createApp({
         };
 
         return {
-            socketId, lang, t, tLog, toggleLang, myUid,
+            socketId, lang, t, tLog, formatLogAction, viewLogCard, toggleLang, myUid,
             myName, roomName, isInRoom, joinRoom, leaveRoom, toggleReady, players, isReady,
             gameStarted, startGame, logs, roomList,
             gameState, isMyTurn, currentPlayerName, allReady, rankedPlayers, showTurnNotification,
