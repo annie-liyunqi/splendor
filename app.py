@@ -2,6 +2,7 @@ from flask import Flask, send_from_directory, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import random
+import time
 from game_data import FULL_CARD_POOL
 
 app = Flask(__name__)
@@ -15,9 +16,14 @@ games = {}
 player_map = {} 
 
 class GameEngine:
-    def __init__(self, room_id):
+    def __init__(self, room_id, password=None, is_private=False):
         self.room_id = room_id
+        self.password = password
+        self.is_private = is_private
+        self.last_activity = time.time()
+        
         self.players = [] 
+        self.active_player_count = 0
         self.game_started = False
         
         self.vote_active = False
@@ -25,6 +31,7 @@ class GameEngine:
 
         self.state = {
             "turnIndex": 0,
+            "activePlayerCount": 0,
             "bank": {"red":0, "green":0, "blue":0, "white":0, "black":0, "gold":0},
             "playerTokens": {},
             "playerBonuses": {},
@@ -39,12 +46,16 @@ class GameEngine:
         }
         self.selections = {} 
 
+    def touch(self):
+        self.last_activity = time.time()
+
     def get_player(self, uid):
         for p in self.players:
             if p.get('uid') == uid: return p
         return None
 
     def add_player(self, sid, uid, name):
+        self.touch()
         existing = self.get_player(uid)
         if existing:
             existing['id'] = sid
@@ -68,13 +79,16 @@ class GameEngine:
         return p['name'] if p else "Unknown"
 
     def start_game(self):
+        self.touch()
         if len(self.players) < 2:
             return False
         
         # 1. 随机顺序
         random.shuffle(self.players)
+        self.active_player_count = len(self.players)
+        self.state['activePlayerCount'] = self.active_player_count
         
-        player_count = len(self.players)
+        player_count = self.active_player_count
         token_count = 4 if player_count == 2 else (5 if player_count == 3 else 7)
         for c in ['red', 'green', 'blue', 'white', 'black']:
             self.state['bank'][c] = token_count
@@ -105,7 +119,8 @@ class GameEngine:
         return True
 
     def next_turn(self):
-        self.state['turnIndex'] = (self.state['turnIndex'] + 1) % len(self.players)
+        self.touch()
+        self.state['turnIndex'] = (self.state['turnIndex'] + 1) % self.active_player_count
         if self.state['turnIndex'] == 0 and self.state['isLastRound']:
             self.state['gameOver'] = True
 
@@ -128,10 +143,12 @@ class GameEngine:
 def broadcast_room_list():
     room_data = []
     for r_id, g in games.items():
+        if g.is_private: continue
         room_data.append({
             'id': r_id,
             'count': len(g.players),
-            'status': 'Playing' if g.game_started else 'Waiting'
+            'status': 'Playing' if g.game_started else 'Waiting',
+            'hasPassword': bool(g.password)
         })
     socketio.emit('ROOM_LIST_UPDATE', room_data)
 
@@ -167,6 +184,8 @@ def handle_join(data):
     room_id = data.get('room', 'default')
     name = data.get('name', 'Player')
     uid = data.get('uid') 
+    password = data.get('password')
+    is_private = data.get('isPrivate', False)
 
     if not uid: return
 
@@ -174,11 +193,16 @@ def handle_join(data):
         old_room = player_map[request.sid]
         leave_room(old_room)
 
+    if room_id in games:
+        game = games[room_id]
+        if game.password and game.password != password:
+            emit('JOIN_FAILED', {'reason': 'Wrong Password'})
+            return
+    else:
+        games[room_id] = GameEngine(room_id, password, is_private)
+
     join_room(room_id)
     player_map[request.sid] = room_id
-
-    if room_id not in games:
-        games[room_id] = GameEngine(room_id)
     
     game = games[room_id]
     reconnected = game.add_player(request.sid, uid, name)
@@ -472,6 +496,24 @@ def handle_reserve(payload):
     emit('ADD_LOG', {'key': 'log_reserve', 'args': [p_name, card]}, to=game.room_id)
     game.next_turn()
     emit('STATE_SYNC', game.state, to=game.room_id)
+
+def check_inactivity():
+    while True:
+        socketio.sleep(60)
+        now = time.time()
+        to_remove = []
+        for rid, game in games.items():
+            if now - game.last_activity > 1800:
+                to_remove.append(rid)
+        
+        for rid in to_remove:
+            socketio.emit('ROOM_CLOSED', {'reason': 'inactivity'}, to=rid)
+            del games[rid]
+        
+        if to_remove:
+            broadcast_room_list()
+
+socketio.start_background_task(check_inactivity)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=80, debug=True)

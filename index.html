@@ -200,6 +200,15 @@
                     <label>{{ t('room_id') }}: </label>
                     <input v-model="roomName" :placeholder="t('enter_room')">
                 </div>
+                <div>
+                    <label>{{ t('password') }}: </label>
+                    <input v-model="roomPassword" type="password" :placeholder="t('enter_password')">
+                </div>
+                <div style="margin: 10px 0;">
+                    <label>
+                        <input type="checkbox" v-model="isPrivateRoom" style="width: auto;"> {{ t('private_room') }}
+                    </label>
+                </div>
                 <button @click="joinRoom">{{ t('join_room') }}</button>
             </div>
         </div>
@@ -208,7 +217,7 @@
             <h4>{{ t('active_rooms') }}</h4>
             <div v-if="roomList.length === 0" style="color: #bdc3c7;">{{ t('no_rooms') }}</div>
             <div v-for="r in roomList" :key="r.id" class="room-item" @click="roomName = r.id">
-                <span>{{ r.id }}</span>
+                <span>{{ r.id }} <span v-if="r.hasPassword">🔒</span></span>
                 <span>👤 {{ r.count }} | {{ r.status }}</span>
             </div>
         </div>
@@ -238,6 +247,7 @@
             <h3>{{ t('turn') }}: {{ currentPlayerName }}</h3>
             <div v-if="gameState.gameOver" style="color: #e74c3c; font-weight: bold;">🏁 {{ t('game_over') }}</div>
             <div v-else-if="isMyTurn" style="color: #f1c40f; font-weight: bold;">🌟 {{ t('your_turn') }}</div>
+            <div v-else-if="isSpectator" style="color: #bdc3c7; font-weight: bold;">👁️ {{ t('spectating') }}</div>
             <button @click="requestRestartVote" class="danger" style="font-size: 12px; padding: 5px 10px;">{{ t('reset_game') }}</button>
         </div>
 
@@ -441,6 +451,8 @@ const { createApp, ref, reactive, computed, nextTick, watch, onMounted } = Vue;
 const TRANS = {
     zh: {
         lobby_title: "游戏大厅", your_name: "你的名字", enter_name: "输入名字", room_id: "房间号", enter_room: "输入房间号",
+        password: "密码", enter_password: "输入密码 (可选)", private_room: "私密房间", wrong_password: "密码错误",
+        room_closed: "房间已关闭", room_closed_inactivity: "房间因长时间无活动已关闭", spectating: "观战中",
         join_room: "加入房间", players_in_room: "房间内玩家", you: "你", cancel_ready: "取消准备", ready: "准备",
         start_game: "开始游戏", need_more_players: "需要至少 2 人", turn: "回合", game_over: "游戏结束", your_turn: "轮到你了",
         reset_game: "重置游戏", leaderboard: "排行榜", back_to_lobby: "返回大厅", bank: "银行", selected: "已选",
@@ -458,6 +470,8 @@ const TRANS = {
     },
     en: {
         lobby_title: "Game Lobby", your_name: "Your Name", enter_name: "Name", room_id: "Room ID", enter_room: "Room ID",
+        password: "Password", enter_password: "Password (Optional)", private_room: "Private Room", wrong_password: "Wrong Password",
+        room_closed: "Room Closed", room_closed_inactivity: "Room closed due to inactivity", spectating: "Spectating",
         join_room: "Join Room", players_in_room: "Players in Room", you: "You", cancel_ready: "Cancel Ready", ready: "Ready",
         start_game: "Start Game", need_more_players: "Need 2+ players", turn: "Turn", game_over: "Game Over", your_turn: "Your Turn",
         reset_game: "Reset Game", leaderboard: "Leaderboard", back_to_lobby: "Back to Lobby", bank: "Bank", selected: "Selected",
@@ -491,6 +505,8 @@ createApp({
         
         const myName = ref('');
         const roomName = ref('');
+        const roomPassword = ref('');
+        const isPrivateRoom = ref(false);
         const roomList = ref([]);
         const isInRoom = ref(false);
         const gameStarted = ref(false);
@@ -504,7 +520,7 @@ createApp({
         const voteRequester = ref('');
 
         const gameState = reactive({
-            turnIndex: 0, bank: {}, playerTokens: {}, playerBonuses: {}, reservedCards: {},
+            turnIndex: 0, activePlayerCount: 0, bank: {}, playerTokens: {}, playerBonuses: {}, reservedCards: {},
             board: {level1:[], level2:[], level3:[]}, decks: {}, scores: {}, nobles: [], gameOver: false
         });
 
@@ -580,8 +596,25 @@ createApp({
              voteActive.value = true;
         });
         socket.on('VOTE_END', () => { voteActive.value = false; });
+        
+        socket.on('JOIN_FAILED', (data) => {
+            alert(t('wrong_password'));
+            isInRoom.value = false;
+        });
+        socket.on('ROOM_CLOSED', (data) => {
+            alert(t('room_closed_inactivity'));
+            leaveRoom();
+        });
 
         const isMyTurn = computed(() => gameStarted.value && players.value[gameState.turnIndex]?.uid === myUid.value);
+        const isSpectator = computed(() => {
+            if (!gameStarted.value) return false;
+            if (gameState.activePlayerCount > 0) {
+                const myIndex = players.value.findIndex(p => p.uid === myUid.value);
+                return myIndex >= gameState.activePlayerCount;
+            }
+            return false;
+        });
         const currentPlayerName = computed(() => players.value[gameState.turnIndex]?.name || '');
         const allReady = computed(() => players.value.length > 0 && players.value.every(p => p.isReady));
         const rankedPlayers = computed(() => [...players.value].sort((a,b) => (gameState.scores[b.uid]||0) - (gameState.scores[a.uid]||0)));
@@ -597,7 +630,13 @@ createApp({
             if (!roomName.value || !myName.value) return;
             localStorage.setItem('splendor_name', myName.value);
             localStorage.setItem('splendor_room', roomName.value);
-            socket.emit('JOIN_ROOM', { room: roomName.value, name: myName.value, uid: myUid.value });
+            socket.emit('JOIN_ROOM', { 
+                room: roomName.value, 
+                name: myName.value, 
+                uid: myUid.value,
+                password: roomPassword.value,
+                isPrivate: isPrivateRoom.value
+            });
             isInRoom.value = true;
         };
 
@@ -734,9 +773,9 @@ createApp({
 
         return {
             socketId, lang, t, tLog, formatLogAction, viewLogCard, toggleLang, myUid,
-            myName, roomName, isInRoom, joinRoom, leaveRoom, toggleReady, players, isReady,
+            myName, roomName, roomPassword, isPrivateRoom, isInRoom, joinRoom, leaveRoom, toggleReady, players, isReady,
             gameStarted, startGame, logs, roomList,
-            gameState, isMyTurn, currentPlayerName, allReady, rankedPlayers, showTurnNotification,
+            gameState, isMyTurn, currentPlayerName, allReady, rankedPlayers, isSpectator, showTurnNotification,
             selectToken, selectedTokens, confirmTakeTokens,
             selectedCard, selectCard, selectDeck, remoteSelections, executeBuy, executeReserve,
             isDiscarding, discardCountNeeded, tempTokensMap, tokensToDiscard, handleDiscardClick, confirmDiscard,
