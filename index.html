@@ -467,6 +467,16 @@
         </div>
     </div>
 
+    <div v-if="showPasswordModal" class="vote-modal" style="z-index: 400;">
+        <h3>{{ t('enter_password') }}</h3>
+        <input v-model="pendingJoinPassword" type="password" :placeholder="t('password')" style="text-align: center;">
+        <div v-if="passwordError" style="color: #e74c3c; font-size: 12px; margin-top: 5px;">{{ passwordError }}</div>
+        <div style="display: flex; gap: 20px; justify-content: center; margin-top: 15px;">
+            <button @click="confirmQuickJoin">{{ t('confirm') }}</button>
+            <button @click="closePasswordModal" class="secondary">{{ t('close') }}</button>
+        </div>
+    </div>
+
     <div class="log-box" ref="logBox">
         <div v-for="(log, i) in logs" :key="i" class="log-item">
             <span class="log-name">{{ log.args[0] }}</span> 
@@ -504,9 +514,16 @@
             <div v-for="(msg, i) in (chatTab === 'global' ? globalChats : roomChats)" :key="i" class="chat-msg">
                 <span class="name">{{ msg.name }}:</span>
                 <span>{{ msg.content }}</span>
+                <span v-if="msg.roomId && msg.roomId !== roomName">
+                    <button @click="quickJoin(msg.roomId)" style="font-size: 10px; padding: 2px 5px; margin-left: 5px; background: #27ae60; border: none; border-radius: 3px; color: white; cursor: pointer;">
+                        {{ t('join_room_btn', [msg.roomId]) }}
+                    </button>
+                    <span v-if="msg.hasPassword" style="font-size: 10px; color: #e74c3c; margin-left: 3px;">{{ t('need_password') }}</span>
+                </span>
             </div>
         </div>
         <div class="chat-input-area">
+            <button v-if="chatTab === 'global' && isInRoom" @click="shareRoom" style="margin-right: 5px; padding: 5px 8px; font-size: 14px;" title="Share Room">🔗</button>
             <input v-model="chatInput" @keyup.enter="sendChat" :placeholder="t('chat_placeholder')">
             <button @click="sendChat">➤</button>
         </div>
@@ -533,6 +550,8 @@ const TRANS = {
         filter_all: "全部", filter_waiting: "等待中", filter_playing: "游戏中",
         sort_activity: "活跃度", sort_default: "默认",
         chat_global: "大厅聊天", chat_room: "房间聊天", chat_placeholder: "输入消息...",
+        room_invite_msg: "我正在房间 %s 玩游戏，快来加入吧！", join_room_btn: "加入 %s", confirm_leave_join: "确定要离开当前房间并加入新房间吗？",
+        need_password: "(需要密码)",
 
         log_join: "加入了房间", log_reconnect: "重新连接了", log_start: "游戏开始！初始顺序已随机",
         log_take: "拿取了:", log_buy: "购买了:",
@@ -555,6 +574,8 @@ const TRANS = {
         filter_all: "All", filter_waiting: "Waiting", filter_playing: "Playing",
         sort_activity: "Activity", sort_default: "Default",
         chat_global: "Global Chat", chat_room: "Room Chat", chat_placeholder: "Type a message...",
+        room_invite_msg: "I'm playing in room %s. Come join!", join_room_btn: "Join %s", confirm_leave_join: "Leave current room to join new room?",
+        need_password: "(Password Required)",
 
         log_join: "joined the room", log_reconnect: "reconnected", log_start: "Game Started! Order randomized",
         log_take: "took:", log_buy: "bought:",
@@ -591,6 +612,11 @@ createApp({
         const chatInput = ref('');
         const chatBox = ref(null);
         const isChatOpen = ref(true);
+
+        const showPasswordModal = ref(false);
+        const pendingJoinRoomId = ref('');
+        const pendingJoinPassword = ref('');
+        const passwordError = ref('');
 
         const isInRoom = ref(false);
         const gameStarted = ref(false);
@@ -675,6 +701,14 @@ createApp({
             gameStarted.value = false; isReady.value = false; logs.value = []; lastAction.value = null; voteActive.value = false;
         });
         socket.on('ROOM_LIST_UPDATE', (rooms) => { roomList.value = rooms; });
+        socket.on('GLOBAL_CHAT_HISTORY', (history) => {
+            globalChats.value = history;
+            nextTick(() => { if(chatBox.value && chatTab.value === 'global') chatBox.value.scrollTop = chatBox.value.scrollHeight; });
+        });
+        socket.on('ROOM_CHAT_HISTORY', (history) => {
+            roomChats.value = history;
+            nextTick(() => { if(chatBox.value && chatTab.value === 'room') chatBox.value.scrollTop = chatBox.value.scrollHeight; });
+        });
         socket.on('GLOBAL_CHAT_MSG', (msg) => { 
             globalChats.value.push(msg); 
             if (chatTab.value === 'global') nextTick(() => { if(chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight; });
@@ -690,7 +724,19 @@ createApp({
         socket.on('VOTE_END', () => { voteActive.value = false; });
         
         socket.on('JOIN_FAILED', (data) => {
-            alert(t('wrong_password'));
+            if (data.reason === 'Wrong Password') {
+                if (showPasswordModal.value) {
+                    passwordError.value = t('wrong_password');
+                } else {
+                    // If we failed but modal wasn't open, open it now (e.g. private room or manual join)
+                    pendingJoinRoomId.value = roomName.value;
+                    pendingJoinPassword.value = '';
+                    passwordError.value = t('wrong_password');
+                    showPasswordModal.value = true;
+                }
+            } else {
+                alert(data.reason);
+            }
             isInRoom.value = false;
         });
         socket.on('ROOM_CLOSED', (data) => {
@@ -762,14 +808,6 @@ createApp({
         const submitVote = (agree) => {
             socket.emit('SUBMIT_VOTE', agree);
             voteActive.value = false; 
-        };
-
-        const sendChat = () => {
-            if (!chatInput.value.trim()) return;
-            const payload = { content: chatInput.value, name: myName.value };
-            if (chatTab.value === 'global') socket.emit('SEND_GLOBAL_CHAT', payload);
-            else if (chatTab.value === 'room' && isInRoom.value) socket.emit('SEND_ROOM_CHAT', payload);
-            chatInput.value = '';
         };
 
         const selectToken = (color) => {
@@ -883,6 +921,63 @@ createApp({
             isDiscarding.value = false; selectedTokens.value = []; pendingAction.value = null;
         };
 
+        const sendChat = () => {
+            if (!chatInput.value.trim()) return;
+            const payload = { content: chatInput.value, name: myName.value };
+            if (chatTab.value === 'global') socket.emit('SEND_GLOBAL_CHAT', payload);
+            else if (chatTab.value === 'room' && isInRoom.value) socket.emit('SEND_ROOM_CHAT', payload);
+            chatInput.value = '';
+        };
+
+        const shareRoom = () => {
+            if (!isInRoom.value) return;
+            socket.emit('SEND_GLOBAL_CHAT', {
+                content: t('room_invite_msg', [roomName.value]),
+                name: myName.value,
+                roomId: roomName.value
+            });
+        };
+
+        const quickJoin = (rid) => {
+            const targetRoom = roomList.value.find(r => r.id === rid);
+            if (targetRoom && targetRoom.hasPassword) {
+                pendingJoinRoomId.value = rid;
+                pendingJoinPassword.value = '';
+                passwordError.value = '';
+                showPasswordModal.value = true;
+                return;
+            }
+            
+            performJoin(rid, '');
+        };
+
+        const performJoin = (rid, pwd) => {
+            if (isInRoom.value) {
+                if (!confirm(t('confirm_leave_join'))) return;
+                leaveRoom();
+            }
+            roomName.value = rid;
+            roomPassword.value = pwd;
+            joinRoom();
+        };
+
+        const confirmQuickJoin = () => {
+            performJoin(pendingJoinRoomId.value, pendingJoinPassword.value);
+            // Don't close modal yet, wait for success or failure
+        };
+
+        const closePasswordModal = () => {
+            showPasswordModal.value = false;
+            pendingJoinRoomId.value = '';
+            pendingJoinPassword.value = '';
+            passwordError.value = '';
+        };
+
+        // Close modal on successful join
+        watch(isInRoom, (val) => {
+            if (val) closePasswordModal();
+        });
+
         return {
             socketId, lang, t, tLog, formatLogAction, viewLogCard, toggleLang, myUid,
             myName, roomName, roomPassword, isPrivateRoom, isInRoom, joinRoom, leaveRoom, toggleReady, players, isReady,
@@ -894,7 +989,9 @@ createApp({
             lastAction, lastActionKey,
             voteActive, voteRequester, requestRestartVote, submitVote,
             lobbyFilter, lobbySort, displayRooms,
-            chatTab, globalChats, roomChats, chatInput, chatBox, sendChat, isChatOpen
+            chatTab, globalChats, roomChats, chatInput, chatBox, sendChat, isChatOpen,
+            shareRoom, quickJoin,
+            showPasswordModal, pendingJoinPassword, passwordError, confirmQuickJoin, closePasswordModal
         };
     }
 }).mount('#app');

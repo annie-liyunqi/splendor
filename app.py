@@ -14,6 +14,7 @@ root_dir = os.path.dirname(os.path.abspath(__file__))
 # --- Global Storage ---
 games = {} 
 player_map = {} 
+global_chat_history = []
 
 class GameEngine:
     def __init__(self, room_id, password=None, is_private=False):
@@ -28,6 +29,7 @@ class GameEngine:
         
         self.vote_active = False
         self.restart_votes = {} 
+        self.chat_history = []
 
         self.state = {
             "turnIndex": 0,
@@ -179,6 +181,7 @@ def static_files(filename):
 @socketio.on('connect')
 def handle_connect():
     broadcast_room_list()
+    emit('GLOBAL_CHAT_HISTORY', global_chat_history)
 
 @socketio.on('JOIN_ROOM')
 def handle_join(data):
@@ -209,6 +212,7 @@ def handle_join(data):
     reconnected = game.add_player(request.sid, uid, name)
     
     emit('PLAYER_LIST', game.players, to=room_id)
+    emit('ROOM_CHAT_HISTORY', game.chat_history, to=request.sid)
     if game.game_started:
         emit('GAME_START', to=request.sid)
         emit('STATE_SYNC', game.state, to=request.sid)
@@ -462,6 +466,7 @@ def handle_global_chat(msg):
         # Try to find name from current game
         room_id = player_map[request.sid]
         if room_id in games:
+            games[room_id].touch()
             uid = get_uid_by_sid(request.sid)
             if uid: name = games[room_id].get_player_name(uid)
     
@@ -470,20 +475,37 @@ def handle_global_chat(msg):
     sender_name = msg.get('name', name)
     content = msg.get('content', '')
     if not content: return
+    if len(content) > 200: content = content[:200]
+
+    room_id = msg.get('roomId')
     
-    emit('GLOBAL_CHAT_MSG', {'name': sender_name, 'content': content}, broadcast=True)
+    has_password = False
+    if room_id and room_id in games:
+        has_password = bool(games[room_id].password)
+
+    message = {'name': sender_name, 'content': content, 'roomId': room_id, 'hasPassword': has_password}
+    global_chat_history.append(message)
+    if len(global_chat_history) > 200: global_chat_history.pop(0)
+
+    emit('GLOBAL_CHAT_MSG', message, broadcast=True)
 
 @socketio.on('SEND_ROOM_CHAT')
 def handle_room_chat(msg):
     game = get_game_by_sid(request.sid)
     if not game: return
     
+    game.touch()
     uid = get_uid_by_sid(request.sid)
     name = game.get_player_name(uid)
     content = msg.get('content', '')
     if not content: return
+    if len(content) > 200: content = content[:200]
     
-    emit('ROOM_CHAT_MSG', {'name': name, 'content': content}, to=game.room_id)
+    message = {'name': name, 'content': content}
+    game.chat_history.append(message)
+    if len(game.chat_history) > 50: game.chat_history.pop(0)
+
+    emit('ROOM_CHAT_MSG', message, to=game.room_id)
 
 def check_inactivity():
     while True:
