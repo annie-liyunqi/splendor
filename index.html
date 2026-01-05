@@ -169,6 +169,35 @@
             cursor: pointer; display: flex; justify-content: space-between;
         }
         .room-item:hover { background: #34495e; border-color: #f1c40f; }
+
+        /* Chat Styles */
+        .chat-container {
+            position: fixed; bottom: 20px; right: 20px; width: 300px; height: 400px;
+            background: #2c3e50; border: 2px solid #7f8c8d; border-radius: 8px;
+            display: flex; flex-direction: column; z-index: 500; box-shadow: 0 0 15px rgba(0,0,0,0.5);
+            transition: height 0.3s ease;
+        }
+        .chat-container.folded { height: 40px; overflow: hidden; }
+        .chat-header { display: flex; border-bottom: 1px solid #7f8c8d; height: 40px; box-sizing: border-box; }
+        .chat-tab { 
+            flex: 1; padding: 10px; text-align: center; cursor: pointer; background: #34495e; color: #bdc3c7;
+            font-size: 13px; font-weight: bold; line-height: 1.2;
+        }
+        .chat-tab.active { background: #2c3e50; color: #f1c40f; border-bottom: 2px solid #f1c40f; }
+        .chat-tab.disabled { cursor: not-allowed; opacity: 0.5; }
+        .chat-toggle {
+            width: 40px; display: flex; align-items: center; justify-content: center;
+            background: #34495e; color: #bdc3c7; cursor: pointer; border-left: 1px solid #7f8c8d;
+        }
+        .chat-toggle:hover { background: #2c3e50; color: white; }
+        
+        .chat-messages { flex: 1; overflow-y: auto; padding: 10px; font-size: 12px; display: flex; flex-direction: column; gap: 5px; }
+        .chat-msg { word-break: break-word; }
+        .chat-msg .name { font-weight: bold; color: #f1c40f; margin-right: 5px; }
+        
+        .chat-input-area { padding: 10px; border-top: 1px solid #7f8c8d; display: flex; }
+        .chat-input-area input { flex: 1; width: auto; margin: 0; padding: 5px; font-size: 12px; }
+        .chat-input-area button { margin: 0 0 0 5px; padding: 5px 10px; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -214,9 +243,23 @@
         </div>
 
         <div style="flex: 1; border-left: 1px solid #7f8c8d; padding-left: 20px;">
-            <h4>{{ t('active_rooms') }}</h4>
-            <div v-if="roomList.length === 0" style="color: #bdc3c7;">{{ t('no_rooms') }}</div>
-            <div v-for="r in roomList" :key="r.id" class="room-item" @click="roomName = r.id">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h4 style="margin: 0;">{{ t('active_rooms') }}</h4>
+                <div style="display: flex; gap: 5px;">
+                    <select v-model="lobbyFilter" style="padding: 2px; font-size: 11px; width: auto;">
+                        <option value="all">{{ t('filter_all') }}</option>
+                        <option value="waiting">{{ t('filter_waiting') }}</option>
+                        <option value="playing">{{ t('filter_playing') }}</option>
+                    </select>
+                    <select v-model="lobbySort" style="padding: 2px; font-size: 11px; width: auto;">
+                        <option value="activity">{{ t('sort_activity') }}</option>
+                        <option value="default">{{ t('sort_default') }}</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div v-if="displayRooms.length === 0" style="color: #bdc3c7;">{{ t('no_rooms') }}</div>
+            <div v-for="r in displayRooms" :key="r.id" class="room-item" @click="roomName = r.id">
                 <span>{{ r.id }} <span v-if="r.hasPassword">🔒</span></span>
                 <span>👤 {{ r.count }} | {{ r.status }}</span>
             </div>
@@ -443,6 +486,31 @@
             </span>
         </div>
     </div>
+
+    <!-- Chat Box -->
+    <div class="chat-container" :class="{ folded: !isChatOpen }">
+        <div class="chat-header">
+            <div class="chat-tab" :class="{ active: chatTab === 'global' }" @click="chatTab = 'global'; isChatOpen = true">
+                {{ t('chat_global') }}
+            </div>
+            <div class="chat-tab" :class="{ active: chatTab === 'room', disabled: !isInRoom }" @click="isInRoom && (chatTab = 'room'); isChatOpen = true">
+                {{ t('chat_room') }}
+            </div>
+            <div class="chat-toggle" @click="isChatOpen = !isChatOpen">
+                {{ isChatOpen ? '▼' : '▲' }}
+            </div>
+        </div>
+        <div class="chat-messages" ref="chatBox">
+            <div v-for="(msg, i) in (chatTab === 'global' ? globalChats : roomChats)" :key="i" class="chat-msg">
+                <span class="name">{{ msg.name }}:</span>
+                <span>{{ msg.content }}</span>
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <input v-model="chatInput" @keyup.enter="sendChat" :placeholder="t('chat_placeholder')">
+            <button @click="sendChat">➤</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -462,6 +530,9 @@ const TRANS = {
         click_to_view: "点击查看详情", home: "退出房间", active_rooms: "活跃房间", no_rooms: "暂无房间",
         vote_title: "%s 请求重置游戏", vote_desc: "所有玩家同意后游戏将重新开始", agree: "同意", decline: "拒绝",
         error_funds: "资金不足！还需要 %s 个黄金", error_max_reserve: "预约卡牌已达上限 (3张)",
+        filter_all: "全部", filter_waiting: "等待中", filter_playing: "游戏中",
+        sort_activity: "活跃度", sort_default: "默认",
+        chat_global: "大厅聊天", chat_room: "房间聊天", chat_placeholder: "输入消息...",
 
         log_join: "加入了房间", log_reconnect: "重新连接了", log_start: "游戏开始！初始顺序已随机",
         log_take: "拿取了:", log_buy: "购买了:",
@@ -481,6 +552,9 @@ const TRANS = {
         click_to_view: "Click to view", home: "Leave Room", active_rooms: "Active Rooms", no_rooms: "No active rooms",
         vote_title: "%s requested reset", vote_desc: "Game will restart if all agree", agree: "Agree", decline: "Decline",
         error_funds: "Insufficient funds! Need %s more gold", error_max_reserve: "Max reserved cards reached (3)",
+        filter_all: "All", filter_waiting: "Waiting", filter_playing: "Playing",
+        sort_activity: "Activity", sort_default: "Default",
+        chat_global: "Global Chat", chat_room: "Room Chat", chat_placeholder: "Type a message...",
 
         log_join: "joined the room", log_reconnect: "reconnected", log_start: "Game Started! Order randomized",
         log_take: "took:", log_buy: "bought:",
@@ -508,6 +582,16 @@ createApp({
         const roomPassword = ref('');
         const isPrivateRoom = ref(false);
         const roomList = ref([]);
+        const lobbyFilter = ref('all');
+        const lobbySort = ref('activity');
+
+        const chatTab = ref('global');
+        const globalChats = ref([]);
+        const roomChats = ref([]);
+        const chatInput = ref('');
+        const chatBox = ref(null);
+        const isChatOpen = ref(true);
+
         const isInRoom = ref(false);
         const gameStarted = ref(false);
         const players = ref([]);
@@ -591,6 +675,14 @@ createApp({
             gameStarted.value = false; isReady.value = false; logs.value = []; lastAction.value = null; voteActive.value = false;
         });
         socket.on('ROOM_LIST_UPDATE', (rooms) => { roomList.value = rooms; });
+        socket.on('GLOBAL_CHAT_MSG', (msg) => { 
+            globalChats.value.push(msg); 
+            if (chatTab.value === 'global') nextTick(() => { if(chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight; });
+        });
+        socket.on('ROOM_CHAT_MSG', (msg) => { 
+            roomChats.value.push(msg); 
+            if (chatTab.value === 'room') nextTick(() => { if(chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight; });
+        });
         socket.on('VOTE_START', (data) => {
              voteRequester.value = data.requester;
              voteActive.value = true;
@@ -615,6 +707,18 @@ createApp({
             }
             return false;
         });
+
+        const displayRooms = computed(() => {
+            let list = [...roomList.value];
+            if (lobbyFilter.value === 'waiting') list = list.filter(r => r.status === 'Waiting');
+            else if (lobbyFilter.value === 'playing') list = list.filter(r => r.status === 'Playing');
+            
+            if (lobbySort.value === 'activity') {
+                list.sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+            }
+            return list;
+        });
+
         const currentPlayerName = computed(() => players.value[gameState.turnIndex]?.name || '');
         const allReady = computed(() => players.value.length > 0 && players.value.every(p => p.isReady));
         const rankedPlayers = computed(() => [...players.value].sort((a,b) => (gameState.scores[b.uid]||0) - (gameState.scores[a.uid]||0)));
@@ -658,6 +762,14 @@ createApp({
         const submitVote = (agree) => {
             socket.emit('SUBMIT_VOTE', agree);
             voteActive.value = false; 
+        };
+
+        const sendChat = () => {
+            if (!chatInput.value.trim()) return;
+            const payload = { content: chatInput.value, name: myName.value };
+            if (chatTab.value === 'global') socket.emit('SEND_GLOBAL_CHAT', payload);
+            else if (chatTab.value === 'room' && isInRoom.value) socket.emit('SEND_ROOM_CHAT', payload);
+            chatInput.value = '';
         };
 
         const selectToken = (color) => {
@@ -780,7 +892,9 @@ createApp({
             selectedCard, selectCard, selectDeck, remoteSelections, executeBuy, executeReserve,
             isDiscarding, discardCountNeeded, tempTokensMap, tokensToDiscard, handleDiscardClick, confirmDiscard,
             lastAction, lastActionKey,
-            voteActive, voteRequester, requestRestartVote, submitVote
+            voteActive, voteRequester, requestRestartVote, submitVote,
+            lobbyFilter, lobbySort, displayRooms,
+            chatTab, globalChats, roomChats, chatInput, chatBox, sendChat, isChatOpen
         };
     }
 }).mount('#app');

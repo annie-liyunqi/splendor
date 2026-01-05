@@ -148,7 +148,8 @@ def broadcast_room_list():
             'id': r_id,
             'count': len(g.players),
             'status': 'Playing' if g.game_started else 'Waiting',
-            'hasPassword': bool(g.password)
+            'hasPassword': bool(g.password),
+            'lastActivity': g.last_activity
         })
     socketio.emit('ROOM_LIST_UPDATE', room_data)
 
@@ -411,49 +412,6 @@ def handle_buy(payload):
     game.next_turn()
     emit('STATE_SYNC', game.state, to=game.room_id)
 
-# @socketio.on('ACTION_RESERVE_CARD')
-# def handle_reserve(payload):
-#     game = get_game_by_sid(request.sid)
-#     if not game or not game.game_started: return
-
-#     current_uid = game.players[game.state['turnIndex']]['uid']
-#     request_uid = get_uid_by_sid(request.sid)
-#     if request_uid != current_uid: return
-
-#     if len(game.state['reservedCards'][current_uid]) >= 3:
-#         return
-
-#     level = payload['level']
-#     index = payload['index']
-#     discard = payload.get('discard', [])
-
-#     card = None
-#     if index == -1:
-#         if game.state['decks'][level]:
-#             card = game.state['decks'][level].pop()
-#     else:
-#         card = game.state['board'][level][index]
-#         if game.state['decks'][level]:
-#             game.state['board'][level][index] = game.state['decks'][level].pop()
-#         else:
-#             game.state['board'][level].pop(index)
-    
-#     if card:
-#         game.state['reservedCards'][current_uid].append(card)
-#         if game.state['bank']['gold'] > 0:
-#             game.state['bank']['gold'] -= 1
-#             game.state['playerTokens'][current_uid]['gold'] += 1
-    
-#     for c in discard:
-#         game.state['playerTokens'][current_uid][c] -= 1
-#         game.state['bank'][c] += 1
-
-#     p_name = game.get_player_name(current_uid)
-#     emit('ADD_LOG', {'key': 'log_reserve', 'args': [p_name]}, to=game.room_id)
-    
-#     game.next_turn()
-#     emit('STATE_SYNC', game.state, to=game.room_id)
-    
 @socketio.on('ACTION_RESERVE_CARD')
 def handle_reserve(payload):
     game = get_game_by_sid(request.sid)
@@ -496,6 +454,36 @@ def handle_reserve(payload):
     emit('ADD_LOG', {'key': 'log_reserve', 'args': [p_name, card]}, to=game.room_id)
     game.next_turn()
     emit('STATE_SYNC', game.state, to=game.room_id)
+
+@socketio.on('SEND_GLOBAL_CHAT')
+def handle_global_chat(msg):
+    name = "Unknown"
+    if request.sid in player_map:
+        # Try to find name from current game
+        room_id = player_map[request.sid]
+        if room_id in games:
+            uid = get_uid_by_sid(request.sid)
+            if uid: name = games[room_id].get_player_name(uid)
+    
+    # If not in game or name not found, maybe pass name in payload? 
+    # For simplicity, let's trust the payload name or just use "Player"
+    sender_name = msg.get('name', name)
+    content = msg.get('content', '')
+    if not content: return
+    
+    emit('GLOBAL_CHAT_MSG', {'name': sender_name, 'content': content}, broadcast=True)
+
+@socketio.on('SEND_ROOM_CHAT')
+def handle_room_chat(msg):
+    game = get_game_by_sid(request.sid)
+    if not game: return
+    
+    uid = get_uid_by_sid(request.sid)
+    name = game.get_player_name(uid)
+    content = msg.get('content', '')
+    if not content: return
+    
+    emit('ROOM_CHAT_MSG', {'name': name, 'content': content}, to=game.room_id)
 
 def check_inactivity():
     while True:
