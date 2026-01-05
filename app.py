@@ -17,7 +17,7 @@ player_map = {} # { "socket_id": "room_id" }
 class GameEngine:
     def __init__(self, room_id):
         self.room_id = room_id
-        # players: [{id, uid, name, isReady}]  <-- Added uid for reconnection
+        # players: [{id, uid, name, isReady}]
         self.players = [] 
         self.game_started = False
         
@@ -52,28 +52,22 @@ class GameEngine:
             p['id'] = new_sid
 
     def add_player(self, sid, uid, name):
-        # Reconnection check: if uid exists, update sid
         existing = self.get_player(uid)
         if existing:
             existing['id'] = sid
-            existing['name'] = name # Update name if changed
-            return True # Reconnected
+            existing['name'] = name 
+            return True 
 
-        # New player
         self.players.append({'id': sid, 'uid': uid, 'name': name, 'isReady': False})
         
-        # Init State
         self.state['playerTokens'][uid] = {c:0 for c in ['red','green','blue','white','black','gold']}
         self.state['playerBonuses'][uid] = {c:0 for c in ['red','green','blue','white','black']}
         self.state['reservedCards'][uid] = []
         self.state['playerNobles'][uid] = []
         self.state['scores'][uid] = 0
-        return False # New join
+        return False
 
     def remove_player(self, uid):
-        # We don't remove immediately on disconnect to allow refresh/reconnect
-        # Logic to actually remove player usually happens if they explicitly leave or timeout
-        # For this simple version, we remove only if explicitly requested or room is cleaned up
         pass
 
     def get_player_name(self, uid):
@@ -84,17 +78,14 @@ class GameEngine:
         if len(self.players) < 2:
             return False
         
-        # Feature 3: Random Order
         random.shuffle(self.players)
         
-        # Setup Bank
         player_count = len(self.players)
         token_count = 4 if player_count == 2 else (5 if player_count == 3 else 7)
         for c in ['red', 'green', 'blue', 'white', 'black']:
             self.state['bank'][c] = token_count
         self.state['bank']['gold'] = 5
 
-        # Setup Decks & Board
         for lvl in ['level1', 'level2', 'level3']:
             self.state['decks'][lvl] = random.sample(FULL_CARD_POOL[lvl], len(FULL_CARD_POOL[lvl]))
             self.state['board'][lvl] = []
@@ -102,11 +93,9 @@ class GameEngine:
                 if self.state['decks'][lvl]:
                     self.state['board'][lvl].append(self.state['decks'][lvl].pop())
 
-        # Setup Nobles
         all_nobles = random.sample(FULL_CARD_POOL['nobles'], len(FULL_CARD_POOL['nobles']))
         self.state['nobles'] = all_nobles[:player_count + 1]
 
-        # Reset Player Vars
         self.state['turnIndex'] = 0
         self.state['gameOver'] = False
         self.state['isLastRound'] = False
@@ -142,7 +131,6 @@ class GameEngine:
                 socketio.emit('ADD_LOG', {'key': 'log_noble', 'args': [self.get_player_name(uid)]}, to=self.room_id)
                 break
 
-# --- Helper: Broadcast Room List ---
 def broadcast_room_list():
     room_data = []
     for r_id, g in games.items():
@@ -160,8 +148,6 @@ def get_game_by_sid(sid):
     return None
 
 def get_uid_by_sid(sid):
-    # This is a helper to find which UID belongs to this socket
-    # In a real app, this would be in a session
     game = get_game_by_sid(sid)
     if game:
         for p in game.players:
@@ -180,18 +166,16 @@ def static_files(filename):
 
 @socketio.on('connect')
 def handle_connect():
-    # Send room list on connect
     broadcast_room_list()
 
 @socketio.on('JOIN_ROOM')
 def handle_join(data):
     room_id = data.get('room', 'default')
     name = data.get('name', 'Player')
-    uid = data.get('uid') # Feature 4: Unique ID for reconnection
+    uid = data.get('uid') 
 
-    if not uid: return # Should not happen with updated client
+    if not uid: return
 
-    # Clean up old socket mapping if exists
     if request.sid in player_map:
         old_room = player_map[request.sid]
         leave_room(old_room)
@@ -223,7 +207,6 @@ def handle_leave():
     if game:
         uid = get_uid_by_sid(request.sid)
         if uid:
-            # Actually remove player logic here if desired
             game.players = [p for p in game.players if p['uid'] != uid]
             emit('PLAYER_LIST', game.players, to=game.room_id)
             if len(game.players) == 0:
@@ -255,7 +238,6 @@ def handle_start():
         emit('ADD_LOG', {'key': 'log_start', 'args': []}, to=game.room_id)
         broadcast_room_list()
 
-# --- Feature 1: Voting Logic ---
 @socketio.on('REQUEST_RESTART_VOTE')
 def handle_vote_request():
     game = get_game_by_sid(request.sid)
@@ -265,30 +247,26 @@ def handle_vote_request():
     requester_name = game.get_player_name(uid)
     
     game.vote_active = True
-    game.restart_votes = {} # Reset votes
+    game.restart_votes = {} 
     
-    # Auto-vote yes for requester
     game.restart_votes[uid] = True
     
     emit('VOTE_START', {'requester': requester_name}, to=game.room_id)
 
 @socketio.on('SUBMIT_VOTE')
-def handle_submit_vote(vote_val): # vote_val: boolean
+def handle_submit_vote(vote_val):
     game = get_game_by_sid(request.sid)
     if not game or not game.vote_active: return
     
     uid = get_uid_by_sid(request.sid)
     game.restart_votes[uid] = vote_val
     
-    # Check if everyone voted
     if len(game.restart_votes) >= len(game.players):
-        # Calculate result
         all_agree = all(game.restart_votes.values())
         game.vote_active = False
         emit('VOTE_END', {'success': all_agree}, to=game.room_id)
         
         if all_agree:
-            # Perform restart
             game.game_started = False
             game.state['gameOver'] = False
             for p in game.players: p['isReady'] = False
@@ -298,14 +276,10 @@ def handle_submit_vote(vote_val): # vote_val: boolean
         else:
             emit('ADD_LOG', {'key': 'log_vote_fail', 'args': []}, to=game.room_id)
 
-
-# --- Game Actions ---
-
 @socketio.on('ACTION_SELECT_CARD')
 def handle_select(payload):
     game = get_game_by_sid(request.sid)
     if not game: return
-    # Use uid for selections
     uid = get_uid_by_sid(request.sid)
     if payload:
         game.selections[uid] = payload
@@ -422,6 +396,11 @@ def handle_reserve(payload):
     current_uid = game.players[game.state['turnIndex']]['uid']
     request_uid = get_uid_by_sid(request.sid)
     if request_uid != current_uid: return
+
+    # --- 新增：限制预约上限为 3 ---
+    if len(game.state['reservedCards'][current_uid]) >= 3:
+        return
+    # ---------------------------
 
     level = payload['level']
     index = payload['index']

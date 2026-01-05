@@ -94,7 +94,6 @@
         .mini-token.black { background: #2c3e50; color: white; border: 1px solid #7f8c8d; }
         .mini-token.gold { background: #f1c40f; color: #8e44ad; }
 
-        /* Mini Reserved Card */
         .mini-reserved {
             width: 20px; height: 28px; border: 1px solid #95a5a6; border-radius: 3px;
             display: inline-block; margin-right: 3px; position: relative; cursor: pointer;
@@ -416,7 +415,7 @@ const TRANS = {
         error_gold: "不能拿取黄金", error_max_3: "最多拿取 3 个", error_same: "不能拿两个不同色的", error_bank_low: "银行不足 4 个，无法拿 2 个",
         click_to_view: "点击查看详情", home: "退出房间", active_rooms: "活跃房间", no_rooms: "暂无房间",
         vote_title: "%s 请求重置游戏", vote_desc: "所有玩家同意后游戏将重新开始", agree: "同意", decline: "拒绝",
-        error_funds: "资金不足！还需要 %s 个黄金",
+        error_funds: "资金不足！还需要 %s 个黄金", error_max_reserve: "预约卡牌已达上限 (3张)",
 
         log_join: "%s 加入了房间", log_reconnect: "%s 重新连接了", log_start: "游戏开始！初始顺序已随机",
         log_take: "%s 拿取了: %s", log_buy: "%s 购买了卡牌 (+%s 分)",
@@ -433,7 +432,7 @@ const TRANS = {
         error_gold: "Cannot take Gold", error_max_3: "Max 3 tokens", error_same: "Invalid selection", error_bank_low: "Bank has < 4, cannot take 2",
         click_to_view: "Click to view", home: "Leave Room", active_rooms: "Active Rooms", no_rooms: "No active rooms",
         vote_title: "%s requested reset", vote_desc: "Game will restart if all agree", agree: "Agree", decline: "Decline",
-        error_funds: "Insufficient funds! Need %s more gold",
+        error_funds: "Insufficient funds! Need %s more gold", error_max_reserve: "Max reserved cards reached (3)",
 
         log_join: "%s joined the room", log_reconnect: "%s reconnected", log_start: "Game Started! Order randomized",
         log_take: "%s took: %s", log_buy: "%s bought a card (+%s pts)",
@@ -442,7 +441,6 @@ const TRANS = {
     }
 };
 
-// --- Feature 4: UUID Generator for Persistence ---
 function uuidv4() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
         var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
@@ -459,7 +457,7 @@ createApp({
         
         const myName = ref('');
         const roomName = ref('');
-        const roomList = ref([]); // Feature 5
+        const roomList = ref([]);
         const isInRoom = ref(false);
         const gameStarted = ref(false);
         const players = ref([]);
@@ -468,7 +466,6 @@ createApp({
         const lastAction = ref(null);
         const lastActionKey = ref(0);
 
-        // Feature 1: Vote State
         const voteActive = ref(false);
         const voteRequester = ref('');
 
@@ -487,9 +484,7 @@ createApp({
         const tempTokensMap = reactive({});
         const pendingAction = ref(null);
 
-        // --- Init Persistence ---
         onMounted(() => {
-            // Restore from storage
             if (localStorage.getItem('splendor_uid')) {
                 myUid.value = localStorage.getItem('splendor_uid');
             } else {
@@ -499,10 +494,9 @@ createApp({
 
             const storedName = localStorage.getItem('splendor_name');
             const storedRoom = localStorage.getItem('splendor_room');
-            
             if (storedName) myName.value = storedName;
             
-            // Auto-join if room exists
+            // Auto-join
             if (storedRoom && storedName) {
                 roomName.value = storedRoom;
                 joinRoom();
@@ -534,11 +528,7 @@ createApp({
         socket.on('RESTART_GAME', () => { 
             gameStarted.value = false; isReady.value = false; logs.value = []; lastAction.value = null; voteActive.value = false;
         });
-        
-        // Feature 5
         socket.on('ROOM_LIST_UPDATE', (rooms) => { roomList.value = rooms; });
-        
-        // Feature 1
         socket.on('VOTE_START', (data) => {
              voteRequester.value = data.requester;
              voteActive.value = true;
@@ -559,17 +549,15 @@ createApp({
 
         const joinRoom = () => {
             if (!roomName.value || !myName.value) return;
-            // Feature 4: Save state
             localStorage.setItem('splendor_name', myName.value);
             localStorage.setItem('splendor_room', roomName.value);
-            
             socket.emit('JOIN_ROOM', { room: roomName.value, name: myName.value, uid: myUid.value });
             isInRoom.value = true;
         };
 
         const leaveRoom = () => {
             socket.emit('LEAVE_ROOM');
-            localStorage.removeItem('splendor_room'); // Clear persistence
+            localStorage.removeItem('splendor_room'); 
             isInRoom.value = false;
             gameStarted.value = false;
             roomName.value = '';
@@ -581,14 +569,12 @@ createApp({
         };
         const startGame = () => socket.emit('REQUEST_START');
         
-        // Feature 1
         const requestRestartVote = () => socket.emit('REQUEST_RESTART_VOTE');
         const submitVote = (agree) => {
             socket.emit('SUBMIT_VOTE', agree);
-            voteActive.value = false; // Close local modal immediately
+            voteActive.value = false; 
         };
 
-        // --- Actions ---
         const selectToken = (color) => {
             if (!isMyTurn.value || color === 'gold') return; 
             const currentCount = selectedTokens.value.length;
@@ -639,12 +625,9 @@ createApp({
         };
         watch(selectedCard, (val) => { if (!val) socket.emit('ACTION_SELECT_CARD', null); });
 
-        // Feature 2: Client side cost check
         const executeBuy = () => {
             if (!selectedCard.value) return;
             const card = selectedCard.value.card;
-            
-            // Validate Cost
             const tokens = gameState.playerTokens[myUid.value];
             const bonuses = gameState.playerBonuses[myUid.value];
             let goldNeeded = 0;
@@ -665,6 +648,11 @@ createApp({
         };
 
         const executeReserve = () => {
+            if ((gameState.reservedCards[myUid.value] || []).length >= 3) {
+                alert(t('error_max_reserve'));
+                return;
+            }
+            
             const currentTotal = Object.values(gameState.playerTokens[myUid.value]).reduce((a,b)=>a+b,0);
             const willGetGold = gameState.bank.gold > 0;
             const final = currentTotal + (willGetGold ? 1 : 0);
