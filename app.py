@@ -30,6 +30,8 @@ class GameEngine:
         self.vote_active = False
         self.restart_votes = {} 
         self.chat_history = []
+        self.activity_logs = []
+        self.pending_choices = {} # {uid: [noble1, noble2]}
 
         self.state = {
             "turnIndex": 0,
@@ -82,6 +84,7 @@ class GameEngine:
 
     def start_game(self):
         self.touch()
+        self.activity_logs = []
         if len(self.players) < 2:
             return False
         
@@ -126,21 +129,40 @@ class GameEngine:
         if self.state['turnIndex'] == 0 and self.state['isLastRound']:
             self.state['gameOver'] = True
 
+    def log_event(self, key, args):
+        log_obj = {'key': key, 'args': args}
+        self.activity_logs.append(log_obj)
+        socketio.emit('ADD_LOG', log_obj, to=self.room_id)
+
     def check_nobles(self, uid):
         bonuses = self.state['playerBonuses'][uid]
-        for i in range(len(self.state['nobles']) - 1, -1, -1):
-            noble = self.state['nobles'][i]
+        candidates = []
+        for noble in self.state['nobles']:
             satisfy = True
             for color, count in noble['cost'].items():
                 if bonuses.get(color, 0) < count:
                     satisfy = False
                     break
             if satisfy:
+                candidates.append(noble)
+        
+        if not candidates:
+            return False
+
+        if len(candidates) == 1:
+            noble = candidates[0]
+            if noble in self.state['nobles']:
+                self.state['nobles'].remove(noble)
                 self.state['scores'][uid] += noble['points']
                 self.state['playerNobles'][uid].append(noble)
-                self.state['nobles'].pop(i)
-                socketio.emit('ADD_LOG', {'key': 'log_noble', 'args': [self.get_player_name(uid)]}, to=self.room_id)
-                break
+                self.log_event('log_noble', [self.get_player_name(uid), noble])
+            return False
+        else:
+            self.pending_choices[uid] = candidates
+            player = self.get_player(uid)
+            if player:
+                socketio.emit('CHOOSE_NOBLE', {'nobles': candidates}, room=player['id'])
+            return True
 
 def broadcast_room_list():
     room_data = []
@@ -213,6 +235,7 @@ def handle_join(data):
     
     emit('PLAYER_LIST', game.players, to=room_id)
     emit('ROOM_CHAT_HISTORY', game.chat_history, to=request.sid)
+    emit('LOG_HISTORY', game.activity_logs, to=request.sid)
     if game.game_started:
         emit('GAME_START', to=request.sid)
         emit('STATE_SYNC', game.state, to=request.sid)
@@ -341,7 +364,7 @@ def handle_take(payload):
     p_name = game.get_player_name(current_uid)
     
     # 修复点 3: 日志传递原始数组，而非字符串
-    emit('ADD_LOG', {'key': 'log_take', 'args': [p_name, take]}, to=game.room_id)
+    game.log_event('log_take', [p_name, take])
     
     game.next_turn()
     emit('STATE_SYNC', game.state, to=game.room_id)
@@ -405,13 +428,50 @@ def handle_buy(payload):
 
     p_name = game.get_player_name(current_uid)
     # 修复点 3: 日志传递卡牌对象
-    emit('ADD_LOG', {'key': 'log_buy', 'args': [p_name, card]}, to=game.room_id)
+    key = 'log_buy_reserved' if source == 'reserved' else 'log_buy'
+    game.log_event(key, [p_name, card])
     
-    game.check_nobles(current_uid)
+    if game.check_nobles(current_uid):
+        # Waiting for noble choice
+        emit('STATE_SYNC', game.state, to=game.room_id)
+        return
 
     if game.state['scores'][current_uid] >= 15:
         game.state['isLastRound'] = True
-        emit('ADD_LOG', {'key': 'log_last_round', 'args': [p_name]}, to=game.room_id)
+        game.log_event('log_last_round', [p_name])
+
+    game.next_turn()
+    emit('STATE_SYNC', game.state, to=game.room_id)
+
+@socketio.on('ACTION_CHOOSE_NOBLE')
+def handle_choose_noble(payload):
+    game = get_game_by_sid(request.sid)
+    if not game or not game.game_started: return
+    
+    current_uid = game.players[game.state['turnIndex']]['uid']
+    request_uid = get_uid_by_sid(request.sid)
+    if request_uid != current_uid: return
+
+    candidates = game.pending_choices.get(current_uid)
+    if not candidates: return
+
+    selected_index = payload.get('index', 0)
+    if selected_index < 0 or selected_index >= len(candidates): return
+    
+    noble = candidates[selected_index]
+    
+    if noble in game.state['nobles']:
+        game.state['nobles'].remove(noble)
+        game.state['scores'][current_uid] += noble['points']
+        game.state['playerNobles'][current_uid].append(noble)
+        game.log_event('log_noble', [game.get_player_name(current_uid), noble])
+    
+    if current_uid in game.pending_choices:
+        del game.pending_choices[current_uid]
+    
+    if game.state['scores'][current_uid] >= 15:
+        game.state['isLastRound'] = True
+        game.log_event('log_last_round', [game.get_player_name(current_uid)])
 
     game.next_turn()
     emit('STATE_SYNC', game.state, to=game.room_id)
@@ -455,7 +515,7 @@ def handle_reserve(payload):
 
     p_name = game.get_player_name(current_uid)
     # 修改处：现在 args[1] 是 card 对象，供前端显示迷你卡牌
-    emit('ADD_LOG', {'key': 'log_reserve', 'args': [p_name, card]}, to=game.room_id)
+    game.log_event('log_reserve', [p_name, card])
     game.next_turn()
     emit('STATE_SYNC', game.state, to=game.room_id)
 

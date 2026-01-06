@@ -192,6 +192,13 @@
             background: #34495e; color: #bdc3c7; cursor: pointer; border-left: 1px solid #7f8c8d;
         }
         .chat-toggle:hover { background: #2c3e50; color: white; }
+
+        .red-dot {
+            width: 8px; height: 8px; background: #e74c3c; border-radius: 50%;
+            display: inline-block; margin-left: 5px; box-shadow: 0 0 2px black;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
         
         .chat-messages { flex: 1; overflow-y: auto; padding: 10px; font-size: 12px; display: flex; flex-direction: column; gap: 5px; }
         .chat-msg { word-break: break-word; }
@@ -537,6 +544,23 @@
         </div>
     </div>
 
+    <div v-if="pendingNobleChoices.length > 0" class="vote-modal" style="z-index: 500;">
+        <h3>{{ t('choose_noble_title') }}</h3>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-bottom: 20px;">
+             <div v-for="(noble, idx) in pendingNobleChoices" :key="idx" 
+                  class="noble-card" 
+                  style="cursor: pointer; transform: scale(1.2); margin: 10px; width: 60px; height: 60px;"
+                  @click="handleNobleChoice(idx)">
+                  <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+                      <div v-for="(count, color) in noble.cost" :key="color" style="display: flex; align-items:center; gap:2px; font-size: 10px;">
+                            <span>{{count}}</span><span :class="'mini-token ' + color" style="width: 8px; height: 8px;"></span>
+                      </div>
+                  </div>
+                  <div style="font-size: 14px; font-weight: bold; text-align: right;">{{noble.points}}</div>
+             </div>
+        </div>
+    </div>
+
     <div class="log-box" ref="logBox">
         <div v-for="(log, i) in logs" :key="i" class="log-item">
             <span class="log-name">{{ log.args[0] }}</span> 
@@ -546,13 +570,24 @@
                 <span v-for="c in log.args[1]" :key="c" class="mini-token" :class="c"></span>
             </span>
 
-            <span v-if="(log.key === 'log_buy' || log.key === 'log_reserve') && log.args[1]" style="margin-left: 5px;">
+            <span v-if="(log.key === 'log_buy' || log.key === 'log_reserve' || log.key === 'log_buy_reserved') && log.args[1]" style="margin-left: 5px;">
                 <div class="mini-reserved" 
                      :class="'bonus-' + log.args[1].bonus" 
                      @click="viewLogCard(log.args[1])"
                      :title="t('click_to_view')">
                     <div v-if="log.args[1].points" class="points">{{ log.args[1].points }}</div>
                 </div>
+            </span>
+
+            <span v-if="log.key === 'log_noble' && log.args[1]" style="margin-left: 5px;">
+                 <div class="noble-card" style="display:inline-flex; width: 40px; height: 40px; vertical-align: middle; padding: 2px; position:relative;" :title="t('click_to_view')">
+                      <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+                          <div v-for="(count, color) in log.args[1].cost" :key="color" style="display: flex; align-items:center; gap:1px; line-height: 1;">
+                            <span style="font-size: 8px;">{{count}}</span><span :class="'mini-token ' + color" style="width: 6px; height: 6px;"></span>
+                         </div>
+                      </div>
+                     <span style="position:absolute; top: 2px; right: 2px; font-size: 10px; font-weight: bold;">{{log.args[1].points}}</span>
+                 </div>
             </span>
         </div>
     </div>
@@ -563,8 +598,8 @@
             <div class="chat-tab" :class="{ active: chatTab === 'global' }" @click="chatTab = 'global'; isChatOpen = true">
                 {{ t('chat_global') }}
             </div>
-            <div class="chat-tab" :class="{ active: chatTab === 'room', disabled: !isInRoom }" @click="isInRoom && (chatTab = 'room'); isChatOpen = true">
-                {{ t('chat_room') }}
+            <div class="chat-tab" :class="{ active: chatTab === 'room', disabled: !isInRoom }" @click="isInRoom && (chatTab = 'room'); isChatOpen = true; hasNewRoomMsg = false;">
+                {{ t('chat_room') }} <span v-if="hasNewRoomMsg" class="red-dot"></span>
             </div>
             <div class="chat-toggle" @click="isChatOpen = !isChatOpen">
                 {{ isChatOpen ? '▼' : '▲' }}
@@ -615,8 +650,10 @@ const TRANS = {
 
         log_join: "加入了房间", log_reconnect: "重新连接了", log_start: "游戏开始！初始顺序已随机",
         log_take: "拿取了:", log_buy: "购买了:",
+        log_buy_reserved: "购买了预约卡:",
         log_reserve: "预约了:", log_noble: "👑 贵族拜访了",
-        log_last_round: "触发了最后一轮！", log_vote_fail: "重置投票未通过"
+        log_last_round: "触发了最后一轮！", log_vote_fail: "重置投票未通过",
+        choose_noble_title: "请选择一个贵族", choose_noble_btn: "选择"
     },
     en: {
         lobby_title: "Game Lobby", your_name: "Your Name", enter_name: "Name", room_id: "Room ID", enter_room: "Room ID",
@@ -639,8 +676,10 @@ const TRANS = {
 
         log_join: "joined the room", log_reconnect: "reconnected", log_start: "Game Started! Order randomized",
         log_take: "took:", log_buy: "bought:",
+        log_buy_reserved: "bought reserved:",
         log_reserve: "reserved:", log_noble: "👑 Noble visited",
-        log_last_round: "triggered the Last Round!", log_vote_fail: "Reset vote failed"
+        log_last_round: "triggered the Last Round!", log_vote_fail: "Reset vote failed",
+        choose_noble_title: "Choose a Noble", choose_noble_btn: "Select"
     }
 };
 
@@ -703,6 +742,8 @@ createApp({
         const tokensToDiscard = ref([]);
         const tempTokensMap = reactive({});
         const pendingAction = ref(null);
+        const hasNewRoomMsg = ref(false);
+        const pendingNobleChoices = ref([]);
 
         onMounted(() => {
             if (localStorage.getItem('splendor_uid')) {
@@ -749,12 +790,20 @@ createApp({
         const toggleLang = () => lang.value = (lang.value === 'zh' ? 'en' : 'zh');
 
         socket.on('connect', () => { socketId.value = socket.id; });
-        socket.on('PLAYER_LIST', (list) => { players.value = list; });
+        socket.on('PLAYER_LIST', (list) => { 
+            players.value = list; 
+            const me = list.find(p => p.uid === myUid.value);
+            if (me) isReady.value = me.isReady;
+        });
         socket.on('ADD_LOG', (logObj) => { 
             logs.value.push(logObj); lastAction.value = logObj; lastActionKey.value++; 
             nextTick(() => { const b = document.querySelector('.log-box'); if(b) b.scrollTop = b.scrollHeight; });
         });
-        socket.on('GAME_START', () => { gameStarted.value = true; });
+        socket.on('LOG_HISTORY', (hist) => { 
+             logs.value = hist; 
+             nextTick(() => { const b = document.querySelector('.log-box'); if(b) b.scrollTop = b.scrollHeight; });
+        });
+        socket.on('GAME_START', () => { gameStarted.value = true; pendingNobleChoices.value = []; });
         socket.on('STATE_SYNC', (state) => { Object.assign(gameState, state); });
         socket.on('SELECTION_UPDATE', (sels) => { remoteSelections.value = sels; });
         socket.on('RESTART_GAME', () => { 
@@ -776,6 +825,10 @@ createApp({
         socket.on('ROOM_CHAT_MSG', (msg) => { 
             roomChats.value.push(msg); 
             if (chatTab.value === 'room') nextTick(() => { if(chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight; });
+            else hasNewRoomMsg.value = true;
+        });
+        socket.on('CHOOSE_NOBLE', (data) => {
+             pendingNobleChoices.value = data.nobles;
         });
         socket.on('VOTE_START', (data) => {
              voteRequester.value = data.requester;
@@ -1026,6 +1079,11 @@ createApp({
             // Don't close modal yet, wait for success or failure
         };
 
+        const handleNobleChoice = (index) => {
+             socket.emit('ACTION_CHOOSE_NOBLE', { index });
+             pendingNobleChoices.value = [];
+        };
+
         const closePasswordModal = () => {
             showPasswordModal.value = false;
             pendingJoinRoomId.value = '';
@@ -1051,7 +1109,8 @@ createApp({
             lobbyFilter, lobbySort, displayRooms,
             chatTab, globalChats, roomChats, chatInput, chatBox, sendChat, isChatOpen,
             shareRoom, quickJoin,
-            showPasswordModal, pendingJoinPassword, passwordError, confirmQuickJoin, closePasswordModal
+            showPasswordModal, pendingJoinPassword, passwordError, confirmQuickJoin, closePasswordModal,
+            pendingNobleChoices, handleNobleChoice, hasNewRoomMsg
         };
     }
 }).mount('#app');
