@@ -445,13 +445,24 @@
                 <span v-for="c in lastAction.args[1]" :key="c" class="mini-token" :class="c"></span>
             </span>
 
-            <span v-if="(lastAction.key === 'log_buy' || lastAction.key === 'log_reserve') && lastAction.args[1]" style="margin-left: 5px;">
+            <span v-if="(lastAction.key === 'log_buy' || lastAction.key === 'log_reserve' || lastAction.key === 'log_buy_reserved') && lastAction.args[1]" style="margin-left: 5px;">
                 <div class="mini-reserved" 
                      :class="'bonus-' + lastAction.args[1].bonus" 
                      @click="viewLogCard(lastAction.args[1])"
                      :title="t('click_to_view')">
                     <div v-if="lastAction.args[1].points" class="points">{{ lastAction.args[1].points }}</div>
                 </div>
+            </span>
+
+            <span v-if="lastAction.key === 'log_noble' && lastAction.args[1]" style="margin-left: 5px;">
+                 <div class="noble-card" style="display:inline-flex; width: 40px; height: 40px; vertical-align: middle; padding: 2px; position:relative;" :title="t('click_to_view')">
+                      <div style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+                          <div v-for="(count, color) in lastAction.args[1].cost" :key="color" style="display: flex; align-items:center; gap:1px; line-height: 1;">
+                            <span style="font-size: 8px;">{{count}}</span><span :class="'mini-token ' + color" style="width: 6px; height: 6px;"></span>
+                         </div>
+                      </div>
+                     <span style="position:absolute; top: 2px; right: 2px; font-size: 10px; font-weight: bold;">{{lastAction.args[1].points}}</span>
+                 </div>
             </span>
         </div>
 
@@ -601,7 +612,7 @@
             <div class="chat-tab" :class="{ active: chatTab === 'room', disabled: !isInRoom }" @click="isInRoom && (chatTab = 'room'); isChatOpen = true; hasNewRoomMsg = false;">
                 {{ t('chat_room') }} <span v-if="hasNewRoomMsg" class="red-dot"></span>
             </div>
-            <div class="chat-toggle" @click="isChatOpen = !isChatOpen">
+            <div class="chat-toggle" @click="isChatOpen = !isChatOpen; if(isChatOpen && chatTab === 'room') hasNewRoomMsg = false;">
                 {{ isChatOpen ? '▼' : '▲' }}
             </div>
         </div>
@@ -824,8 +835,11 @@ createApp({
         });
         socket.on('ROOM_CHAT_MSG', (msg) => { 
             roomChats.value.push(msg); 
-            if (chatTab.value === 'room') nextTick(() => { if(chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight; });
-            else hasNewRoomMsg.value = true;
+            if (chatTab.value === 'room' && isChatOpen.value) {
+                nextTick(() => { if(chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight; });
+            } else {
+                hasNewRoomMsg.value = true;
+            }
         });
         socket.on('CHOOSE_NOBLE', (data) => {
              pendingNobleChoices.value = data.nobles;
