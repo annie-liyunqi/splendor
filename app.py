@@ -1,3 +1,5 @@
+import eventlet
+eventlet.monkey_patch()
 from flask import Flask, send_from_directory, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
@@ -570,18 +572,22 @@ def handle_room_chat(msg):
 def check_inactivity():
     while True:
         socketio.sleep(60)
-        now = time.time()
-        to_remove = []
-        for rid, game in games.items():
-            if now - game.last_activity > 1800:
-                to_remove.append(rid)
-        
-        for rid in to_remove:
-            socketio.emit('ROOM_CLOSED', {'reason': 'inactivity'}, to=rid)
-            del games[rid]
-        
-        if to_remove:
-            broadcast_room_list()
+        try:
+            now = time.time()
+            to_remove = []
+            # 使用 list(games.items()) 创建副本，防止迭代时字典被修改导致报错
+            for rid, game in list(games.items()):
+                if now - game.last_activity > 1800:
+                    to_remove.append(rid)
+            
+            for rid in to_remove:
+                socketio.emit('ROOM_CLOSED', {'reason': 'inactivity'}, to=rid)
+                games.pop(rid, None)
+            
+            if to_remove:
+                broadcast_room_list()
+        except Exception as e:
+            print(f"Error in check_inactivity: {e}")
 
 socketio.start_background_task(check_inactivity)
 
