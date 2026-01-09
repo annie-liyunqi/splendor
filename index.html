@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Splendor Web</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
@@ -60,7 +60,9 @@
         .splendor-card.bonus-white::before { background: #bdc3c7; }
         .splendor-card.bonus-black::before { background: #2c3e50; }
         
-        .splendor-card:hover { transform: translateY(-4px); z-index: 5; }
+        @media (hover: hover) {
+            .splendor-card:hover { transform: translateY(-4px); z-index: 5; }
+        }
         .card-points { position: absolute; top: 15px; left: 8px; font-size: 20px; font-weight: 900; }
         .card-bonus { position: absolute; top: 15px; right: 8px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.1); }
         
@@ -105,7 +107,9 @@
             display: inline-block; margin: 0 3px; position: relative; cursor: pointer;
             background-color: #ecf0f1; transition: transform 0.1s; vertical-align: middle;
         }
-        .mini-reserved:hover { transform: scale(2); z-index: 100; border-color: white; box-shadow: 0 0 5px black;}
+        @media (hover: hover) {
+            .mini-reserved:hover { transform: scale(2); z-index: 100; border-color: white; box-shadow: 0 0 5px black;}
+        }
         .mini-reserved.bonus-red { background: #e74c3c; }
         .mini-reserved.bonus-green { background: #2ecc71; }
         .mini-reserved.bonus-blue { background: #3498db; }
@@ -205,7 +209,7 @@
         .chat-msg .name { font-weight: bold; color: #f1c40f; margin-right: 5px; }
         
         .chat-input-area { padding: 10px; border-top: 1px solid #7f8c8d; display: flex; }
-        .chat-input-area input { flex: 1; width: auto; margin: 0; padding: 5px; font-size: 12px; }
+        .chat-input-area input { flex: 1; width: auto; margin: 0; padding: 5px; font-size: 16px; }
         .chat-input-area button { margin: 0 0 0 5px; padding: 5px 10px; font-size: 12px; }
 
         /* Mobile Responsiveness */
