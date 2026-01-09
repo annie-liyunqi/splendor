@@ -899,7 +899,13 @@ createApp({
 
         const currentPlayerName = computed(() => players.value[gameState.turnIndex]?.name || '');
         const allReady = computed(() => players.value.length > 0 && players.value.every(p => p.isReady));
-        const rankedPlayers = computed(() => [...players.value].sort((a,b) => (gameState.scores[b.uid]||0) - (gameState.scores[a.uid]||0)));
+        const rankedPlayers = computed(() => [...players.value].sort((a,b) => {
+            const scoreDiff = (gameState.scores[b.uid]||0) - (gameState.scores[a.uid]||0);
+            if (scoreDiff !== 0) return scoreDiff;
+            const countA = Object.values(gameState.playerBonuses[a.uid]||{}).reduce((acc, val) => acc + val, 0);
+            const countB = Object.values(gameState.playerBonuses[b.uid]||{}).reduce((acc, val) => acc + val, 0);
+            return countA - countB;
+        }));
 
         watch(() => gameState.turnIndex, (newVal) => {
             if (players.value[newVal]?.uid === myUid.value) {
